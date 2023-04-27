@@ -246,6 +246,8 @@ void la(py::module& m)
       .def("index_map", &dolfinx::la::SparsityPattern::index_map,
            py::arg("dim"))
       .def("column_index_map", &dolfinx::la::SparsityPattern::column_index_map)
+       .def("nnz_diag", &dolfinx::la::SparsityPattern::nnz_diag)
+        .def("nnz_off_diag", &dolfinx::la::SparsityPattern::nnz_off_diag)
       .def("assemble",   &dolfinx::la::SparsityPattern::assemble)
       .def_property_readonly("num_nonzeros",
                              &dolfinx::la::SparsityPattern::num_nonzeros)

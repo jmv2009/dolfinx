@@ -7,7 +7,6 @@
 #include "MPICommWrapper.h"
 #include "array.h"
 #include "caster_mpi.h"
-#include "caster_petsc.h"
 #include <complex>
 #include <dolfinx/common/IndexMap.h>
 #include <dolfinx/common/Scatterer.h>
@@ -89,6 +88,8 @@ void common(py::module& m)
                }),
            py::arg("comm"), py::arg("local_size"), py::arg("dest_src"),
            py::arg("ghosts"), py::arg("ghost_owners"))
+      .def("global_indices",
+                             &dolfinx::common::IndexMap::global_indices)
       .def_property_readonly("size_local",
                              &dolfinx::common::IndexMap::size_local)
       .def_property_readonly("size_global",
