@@ -148,6 +148,7 @@ void petsc_module(py::module& m)
       { return dolfinx::la::petsc::create_vector_wrap(x); },
       py::return_value_policy::take_ownership, py::arg("x"),
       "Create a ghosted PETSc Vec that wraps a DOLFINx Vector");
+
   m.def(
       "create_matrix",
       [](dolfinx_wrappers::MPICommWrapper comm,
@@ -244,6 +245,8 @@ void la(py::module& m)
               }),
           py::arg("comm"), py::arg("patterns"), py::arg("maps"), py::arg("bs"))
       .def("index_map", &dolfinx::la::SparsityPattern::index_map,
+           py::arg("dim"))
+    .def("block_size", &dolfinx::la::SparsityPattern::block_size,
            py::arg("dim"))
       .def("column_index_map", &dolfinx::la::SparsityPattern::column_index_map)
        .def("nnz_diag", &dolfinx::la::SparsityPattern::nnz_diag)

@@ -7,6 +7,7 @@
 #pragma once
 
 #include <petsc4py/petsc4py.h>
+
 #include <petscdm.h>
 #include <petscis.h>
 #include <petscksp.h>
@@ -58,10 +59,7 @@ namespace py = pybind11;
       return py::handle(obj);                                                  \
     }                                                                          \
                                                                                \
-    operator TYPE()                                                            \
-    {                                                                          \
-      return value;                                                            \
-    }                                                                          \
+    operator TYPE() { return value; }                                          \
   }
 
 namespace pybind11::detail

@@ -22,6 +22,7 @@ from dolfinx import cpp as _cpp
 from dolfinx import la
 from dolfinx.cpp.fem import pack_coefficients as _pack_coefficients
 from dolfinx.cpp.fem import pack_constants as _pack_constants
+from dolfinx.cpp.fem import create_sparsity_pattern
 from dolfinx.fem import assemble
 from dolfinx.fem.bcs import DirichletBCMetaClass
 from dolfinx.fem.bcs import bcs_by_block as _bcs_by_block
@@ -34,6 +35,39 @@ from dolfinx.fem.function import Function as _Function
 import petsc4py
 import petsc4py.lib
 from petsc4py import PETSc
+import numpy as np
+
+def create_petsc_matrix(a: form_types, mat_type=None) -> PETSc.Mat:
+    comm = a.mesh.comm
+    sp = create_sparsity_pattern(a)
+    sp.assemble()
+    bs = [sp.block_size(0), sp.block_size(1)]
+    im = [sp.index_map(0), sp.index_map(1)]
+
+    n = bs[0] * im[0].size_local
+    N = bs[0] * im[0].size_global
+    m = bs[1] * im[1].size_local
+    M = bs[1] * im[1].size_global
+    A = PETSc.Mat().create(comm=comm)
+    if mat_type is not None:
+        A.setType(mat_type)
+    else:
+        A.setType(PETSc.Mat.Type.MPIBAIJ)
+    A.setSizes([[n, N], [m, M]])
+    A.setBlockSizes(bs[0], bs[1])
+
+    nnz_diag = np.zeros(im[0].size_local, dtype=np.int32)
+    nnz_off_diag = np.zeros(im[0].size_local, dtype=np.int32)
+    for i in range(im[0].size_local):
+        nnz_diag[i] = sp.nnz_diag(i)
+        nnz_off_diag[i] = sp.nnz_off_diag(i)
+    A.setPreallocationNNZ([nnz_diag, nnz_off_diag])
+    lgmap = [PETSc.LGMap().create(im[i].global_indices(), bsize=bs[i], comm=comm) for i in range(2)]
+    A.setLGMap(*lgmap)
+    A.setOption(PETSc.Mat.Option.NEW_NONZERO_ALLOCATION_ERR, True)
+    A.setOption(PETSc.Mat.Option.KEEP_NONZERO_PATTERN, True)
+    A.setUp()
+    return A
 
 
 def _extract_function_spaces(a: typing.List[typing.List[FormMetaClass]]):
@@ -127,10 +161,12 @@ def create_matrix(a: form_types, mat_type=None) -> PETSc.Mat:
         A PETSc matrix with a layout that is compatible with `a`.
 
     """
-    if mat_type is None:
-        return _cpp.fem.petsc.create_matrix(a)
-    else:
-        return _cpp.fem.petsc.create_matrix(a, mat_type)
+    return create_petsc_matrix(a, mat_type)
+
+    # if mat_type is None:
+    #     return _cpp.fem.petsc.create_matrix(a)
+    # else:
+    #     return _cpp.fem.petsc.create_matrix(a, mat_type)
 
 
 def create_matrix_block(a: typing.List[typing.List[form_types]]) -> PETSc.Mat:
@@ -337,7 +373,7 @@ def _assemble_matrix_form(a: form_types, bcs: typing.List[DirichletBCMetaClass] 
     finalised, i.e. ghost values are not accumulated.
 
     """
-    A = _cpp.fem.petsc.create_matrix(a)
+    A = create_petsc_matrix(a)
     _assemble_matrix_mat(A, a, bcs, diagonal, constants, coeffs)
     return A
 
