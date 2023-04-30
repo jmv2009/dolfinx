@@ -37,6 +37,7 @@ import petsc4py.lib
 from petsc4py import PETSc
 import numpy as np
 
+
 def create_petsc_matrix(a: form_types, mat_type=None) -> PETSc.Mat:
     comm = a.mesh.comm
     sp = create_sparsity_pattern(a)
