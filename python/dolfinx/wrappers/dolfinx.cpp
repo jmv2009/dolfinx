@@ -21,7 +21,7 @@ void graph(py::module& m);
 void io(py::module& m);
 void la(py::module& m);
 void mesh(py::module& m);
-void nls(py::module& m);
+void petsc(py::module& m_fem, py::module& m_la, py::module& m_nls);
 void refinement(py::module& m);
 } // namespace dolfinx_wrappers
 
@@ -66,7 +66,11 @@ PYBIND11_MODULE(cpp, m)
 
   // Create nls submodule
   py::module nls = m.def_submodule("nls", "Nonlinear solver module");
-  dolfinx_wrappers::nls(nls);
+
+  // Optional PETSc parts of modules
+#ifdef HAS_PETSC
+  dolfinx_wrappers::petsc(fem, la, nls);
+#endif
 
   // Create refinement submodule
   py::module refinement = m.def_submodule("refinement", "Refinement module");

@@ -63,7 +63,7 @@ pybind11_add_module(
   dolfinx/wrappers/la.cpp
   dolfinx/wrappers/log.cpp
   dolfinx/wrappers/mesh.cpp
-  dolfinx/wrappers/nls.cpp
+  dolfinx/wrappers/petsc.cpp
   dolfinx/wrappers/refinement.cpp
 )
 
@@ -115,3 +115,10 @@ if(NOT MPI4PY_COMMAND_RESULT)
 else()
   message(FATAL_ERROR "mpi4py could not be found.")
 endif()
+
+
+# get_cmake_property(_variableNames VARIABLES)
+# list (SORT _variableNames)
+# foreach (_variableName ${_variableNames})
+#     message(STATUS "${_variableName}=${${_variableName}}")
+# endforeach()

@@ -38,6 +38,12 @@ void common(py::module& m)
   m.attr("has_slepc") = dolfinx::has_slepc();
   m.attr("has_adios2") = dolfinx::has_adios2();
 
+#ifdef HAS_PETSC
+  m.attr("has_petsc") = true;
+#else
+  m.attr("has_petsc") = false;
+#endif
+
 #ifdef HAS_PYBIND11_SLEPC4PY
   m.attr("has_slepc4py") = true;
 #else
@@ -88,8 +94,7 @@ void common(py::module& m)
                }),
            py::arg("comm"), py::arg("local_size"), py::arg("dest_src"),
            py::arg("ghosts"), py::arg("ghost_owners"))
-      .def("global_indices",
-                             &dolfinx::common::IndexMap::global_indices)
+      .def("global_indices", &dolfinx::common::IndexMap::global_indices)
       .def_property_readonly("size_local",
                              &dolfinx::common::IndexMap::size_local)
       .def_property_readonly("size_global",

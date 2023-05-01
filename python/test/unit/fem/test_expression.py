@@ -15,10 +15,16 @@ import basix
 import dolfinx.cpp
 import ufl
 from basix.ufl import blocked_element
-from dolfinx.cpp.la.petsc import create_matrix
 from dolfinx.fem import (Constant, Expression, Function, FunctionSpace,
                          VectorFunctionSpace, create_sparsity_pattern, form)
+
+if not dolfinx.has_petsc:
+    pytest.skip(allow_module_level=True)
+
+from dolfinx.cpp.la.petsc import create_matrix
 from dolfinx.fem.petsc import load_petsc_lib
+
+
 from dolfinx.mesh import create_unit_square
 from ffcx.element_interface import QuadratureElement
 

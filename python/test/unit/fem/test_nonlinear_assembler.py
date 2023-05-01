@@ -12,10 +12,14 @@ import pytest
 
 import ufl
 from basix.ufl import mixed_element, element
-from dolfinx.cpp.la.petsc import scatter_local_vectors
 from dolfinx.fem import (Function, FunctionSpace, VectorFunctionSpace,
                          bcs_by_block, dirichletbc, extract_function_spaces,
                          form, locate_dofs_topological)
+import dolfinx
+if not dolfinx.has_petsc:
+    pytest.skip(allow_module_level=True)
+
+from dolfinx.cpp.la.petsc import scatter_local_vectors
 from dolfinx.fem.petsc import (apply_lifting, apply_lifting_nest,
                                assemble_matrix, assemble_matrix_block,
                                assemble_matrix_nest, assemble_vector,
@@ -24,6 +28,7 @@ from dolfinx.fem.petsc import (apply_lifting, apply_lifting_nest,
                                create_matrix_nest, create_vector,
                                create_vector_block, create_vector_nest, set_bc,
                                set_bc_nest)
+
 from dolfinx.mesh import (GhostMode, create_unit_cube, create_unit_square,
                           locate_entities_boundary)
 from ufl import derivative, dx, inner
