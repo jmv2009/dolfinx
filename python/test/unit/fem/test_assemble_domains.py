@@ -16,8 +16,6 @@ from dolfinx.mesh import (GhostMode, Mesh, create_unit_square, locate_entities,
                           locate_entities_boundary, meshtags,
                           meshtags_from_entities)
 from mpi4py import MPI
-from petsc4py import PETSc
-
 from dolfinx import cpp as _cpp
 from dolfinx import default_scalar_type
 
@@ -99,7 +97,6 @@ def test_assembly_dx_domains(mode, meshtags_factory):
     s2 = assemble_scalar(L2)
     s2 = mesh.comm.allreduce(s2, op=MPI.SUM)
     assert s == pytest.approx(s2, 1.0e-12)
-
 
 
 @pytest.mark.parametrize("mode", [GhostMode.none, GhostMode.shared_facet])
