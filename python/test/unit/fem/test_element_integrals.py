@@ -304,7 +304,6 @@ def test_plus_minus_simple_vector(cell_type, pm):
                 assert np.isclose(results[0].array[dof0], result.array[dof1])
 
 
-
 @pytest.mark.skip_in_parallel
 @pytest.mark.parametrize('pm1', ["+", "-"])
 @pytest.mark.parametrize('pm2', ["+", "-"])
