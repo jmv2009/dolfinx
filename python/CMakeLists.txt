@@ -115,10 +115,3 @@ if(NOT MPI4PY_COMMAND_RESULT)
 else()
   message(FATAL_ERROR "mpi4py could not be found.")
 endif()
-
-
-# get_cmake_property(_variableNames VARIABLES)
-# list (SORT _variableNames)
-# foreach (_variableName ${_variableNames})
-#     message(STATUS "${_variableName}=${${_variableName}}")
-# endforeach()

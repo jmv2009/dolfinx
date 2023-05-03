@@ -339,7 +339,7 @@ def _assemble_matrix_form(a: form_types, bcs: typing.List[DirichletBCMetaClass] 
     finalised, i.e. ghost values are not accumulated.
 
     """
-    A = create_petsc_matrix(a)
+    A = _cpp.fem.petsc.create_matrix(a)
     _assemble_matrix_mat(A, a, bcs, diagonal, constants, coeffs)
     return A
 
