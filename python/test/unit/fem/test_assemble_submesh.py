@@ -7,10 +7,13 @@
 # TODO Test replacing mesh with submesh for existing assembler tests
 
 import numpy as np
+import numpy.linalg as linalg
 import pytest
 
 import ufl
 from dolfinx import fem
+from dolfinx.la import ScatterMode
+from dolfinx.fem import assemble_vector, assemble_matrix, apply_lifting, set_bc
 from dolfinx.mesh import (GhostMode, create_box, create_rectangle,
                           create_submesh, create_unit_cube, create_unit_square,
                           locate_entities, locate_entities_boundary)
@@ -38,17 +41,18 @@ def assemble(mesh, space, k):
 
     bc = fem.dirichletbc(bc_func, dofs)
 
-    A = fem.petsc.assemble_matrix(a, bcs=[bc])
-    A.assemble()
+    A = assemble_matrix(a, bcs=[bc])
+    A.finalize()
 
     # TODO Test assembly with fem.Function
     x = ufl.SpatialCoordinate(mesh)
     f = 1.5 + x[0]
     L = fem.form(ufl.inner(c * f, v) * (dx + ds))
-    b = fem.petsc.assemble_vector(L)
-    fem.petsc.apply_lifting(b, [a], bcs=[[bc]])
-    b.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
-    fem.petsc.set_bc(b, [bc])
+    b = assemble_vector(L)
+    apply_lifting(b.array, [a], bcs=[[bc]])
+    b.scatter_reverse(ScatterMode.add)
+#    b.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
+    set_bc(b.array, [bc])
     s = mesh.comm.allreduce(fem.assemble_scalar(fem.form(ufl.inner(c * f, f) * (dx + ds))), op=MPI.SUM)
     return A, b, s
 
@@ -78,14 +82,9 @@ def test_submesh_cell_assembly(d, n, k, space, ghost_mode):
     submesh = create_submesh(mesh_1, edim, entities)[0]
     A_submesh, b_submesh, s_submesh = assemble(submesh, space, k)
 
-    assert np.isclose(A_mesh_0.norm(), A_submesh.norm())
-    assert np.isclose(b_mesh_0.norm(), b_submesh.norm())
+    assert np.isclose(A_mesh_0.norm_squared(), A_submesh.norm_squared())
+    assert np.isclose(linalg.norm(b_mesh_0.array), linalg.norm(b_submesh.array))
     assert np.isclose(s_mesh_0, s_submesh)
-
-    A_mesh_0.destroy()
-    b_mesh_0.destroy()
-    A_submesh.destroy()
-    b_submesh.destroy()
 
 
 @pytest.mark.parametrize("n", [2, 6])
@@ -105,11 +104,6 @@ def test_submesh_facet_assembly(n, k, space, ghost_mode):
     square_mesh = create_unit_square(MPI.COMM_WORLD, n, n, ghost_mode=ghost_mode)
     A_square_mesh, b_square_mesh, s_square_mesh = assemble(square_mesh, space, k)
 
-    assert np.isclose(A_submesh.norm(), A_square_mesh.norm())
-    assert np.isclose(b_submesh.norm(), b_square_mesh.norm())
+    assert np.isclose(A_submesh.norm_squared(), A_square_mesh.norm_squared())
+    assert np.isclose(linalg.norm(b_submesh.array), linalg.norm(b_square_mesh.array))
     assert np.isclose(s_submesh, s_square_mesh)
-
-    A_submesh.destroy()
-    b_submesh.destroy()
-    A_square_mesh.destroy()
-    b_square_mesh.destroy()

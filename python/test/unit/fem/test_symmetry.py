@@ -7,11 +7,12 @@
 
 import pytest
 
+import numpy as np
 import basix
 import dolfinx
 import ufl
 from basix.ufl import mixed_element, element
-from dolfinx.fem import FunctionSpace, form
+from dolfinx.fem import FunctionSpace, form, assemble_matrix
 from dolfinx.mesh import CellType, create_unit_cube, create_unit_square
 from ufl import grad, inner
 
@@ -19,7 +20,9 @@ from mpi4py import MPI
 
 
 def check_symmetry(A):
-    assert A.isSymmetric(1e-8)
+    mat = A.to_dense()
+    assert np.linalg.norm(mat) > 0
+    assert np.allclose(mat.T, mat, 1e-8)
 
 
 def run_symmetry_test(cell_type, e, form_f):
@@ -33,8 +36,8 @@ def run_symmetry_test(cell_type, e, form_f):
     v = ufl.TestFunction(space)
     f = form(form_f(u, v))
 
-    A = dolfinx.fem.petsc.assemble_matrix(f)
-    A.assemble()
+    A = assemble_matrix(f)
+    A.finalize()
     check_symmetry(A)
 
 
@@ -122,8 +125,8 @@ def test_mixed_element_form(cell_type, sign, order):
     v, q = ufl.TestFunctions(U)
     f = form(inner(u, v) * ufl.dx + inner(p, q)(sign) * ufl.dS)
 
-    A = dolfinx.fem.petsc.assemble_matrix(f)
-    A.assemble()
+    A = assemble_matrix(f)
+    A.finalize()
     check_symmetry(A)
 
 
@@ -146,7 +149,7 @@ def test_mixed_element_vector_element_form(cell_type, sign, order):
     v, q = ufl.TestFunctions(U)
     f = form(inner(u, v) * ufl.dx + inner(p, q)(sign) * ufl.dS)
 
-    A = dolfinx.fem.petsc.assemble_matrix(f)
-    A.assemble()
+    A = assemble_matrix(f)
+    A.finalize()
 
     check_symmetry(A)
