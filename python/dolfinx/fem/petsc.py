@@ -38,39 +38,6 @@ from petsc4py import PETSc
 import numpy as np
 
 
-def create_petsc_matrix(a: form_types, mat_type=None) -> PETSc.Mat:
-    comm = a.mesh.comm
-    sp = create_sparsity_pattern(a)
-    sp.assemble()
-    bs = [sp.block_size(0), sp.block_size(1)]
-    im = [sp.index_map(0), sp.index_map(1)]
-
-    n = bs[0] * im[0].size_local
-    N = bs[0] * im[0].size_global
-    m = bs[1] * im[1].size_local
-    M = bs[1] * im[1].size_global
-    A = PETSc.Mat().create(comm=comm)
-    if mat_type is not None:
-        A.setType(mat_type)
-    else:
-        A.setType(PETSc.Mat.Type.MPIBAIJ)
-    A.setSizes([[n, N], [m, M]])
-    A.setBlockSizes(bs[0], bs[1])
-
-    nnz_diag = np.zeros(im[0].size_local, dtype=np.int32)
-    nnz_off_diag = np.zeros(im[0].size_local, dtype=np.int32)
-    for i in range(im[0].size_local):
-        nnz_diag[i] = sp.nnz_diag(i)
-        nnz_off_diag[i] = sp.nnz_off_diag(i)
-    A.setPreallocationNNZ([nnz_diag, nnz_off_diag])
-    lgmap = [PETSc.LGMap().create(im[i].global_indices(), bsize=bs[i], comm=comm) for i in range(2)]
-    A.setLGMap(*lgmap)
-    A.setOption(PETSc.Mat.Option.NEW_NONZERO_ALLOCATION_ERR, True)
-    A.setOption(PETSc.Mat.Option.KEEP_NONZERO_PATTERN, True)
-    A.setUp()
-    return A
-
-
 def _extract_function_spaces(a: typing.List[typing.List[FormMetaClass]]):
     """From a rectangular array of bilinear forms, extract the function
     spaces for each block row and block column.
@@ -162,12 +129,10 @@ def create_matrix(a: form_types, mat_type=None) -> PETSc.Mat:
         A PETSc matrix with a layout that is compatible with `a`.
 
     """
-    return create_petsc_matrix(a, mat_type)
-
-    # if mat_type is None:
-    #     return _cpp.fem.petsc.create_matrix(a)
-    # else:
-    #     return _cpp.fem.petsc.create_matrix(a, mat_type)
+    if mat_type is None:
+        return _cpp.fem.petsc.create_matrix(a)
+    else:
+        return _cpp.fem.petsc.create_matrix(a, mat_type)
 
 
 def create_matrix_block(a: typing.List[typing.List[form_types]]) -> PETSc.Mat:
