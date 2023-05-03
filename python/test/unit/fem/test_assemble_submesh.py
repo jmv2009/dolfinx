@@ -7,7 +7,6 @@
 # TODO Test replacing mesh with submesh for existing assembler tests
 
 import numpy as np
-import numpy.linalg as linalg
 import pytest
 
 import ufl
@@ -82,9 +81,15 @@ def test_submesh_cell_assembly(d, n, k, space, ghost_mode):
     submesh = create_submesh(mesh_1, edim, entities)[0]
     A_submesh, b_submesh, s_submesh = assemble(submesh, space, k)
 
-    assert np.isclose(A_mesh_0.norm_squared(), A_submesh.norm_squared())
-    assert np.isclose(linalg.norm(b_mesh_0.array), linalg.norm(b_submesh.array))
-    assert np.isclose(s_mesh_0, s_submesh)
+    A0_norm, A_norm, b0_norm, b_norm, s0, s1 = \
+        MPI.COMM_WORLD.allreduce(np.array([A_mesh_0.norm_squared(),
+                                           A_submesh.norm_squared(),
+                                           b_mesh_0.squared_norm(),
+                                           b_submesh.squared_norm(),
+                                           s_mesh_0, s_submesh]), op=MPI.SUM)
+    assert np.isclose(A0_norm, A_norm)
+    assert np.isclose(b0_norm, b_norm)
+    assert np.isclose(s0, s1)
 
 
 @pytest.mark.parametrize("n", [2, 6])
@@ -104,6 +109,12 @@ def test_submesh_facet_assembly(n, k, space, ghost_mode):
     square_mesh = create_unit_square(MPI.COMM_WORLD, n, n, ghost_mode=ghost_mode)
     A_square_mesh, b_square_mesh, s_square_mesh = assemble(square_mesh, space, k)
 
-    assert np.isclose(A_submesh.norm_squared(), A_square_mesh.norm_squared())
-    assert np.isclose(linalg.norm(b_submesh.array), linalg.norm(b_square_mesh.array))
-    assert np.isclose(s_submesh, s_square_mesh)
+    A0_norm, A_norm, b0_norm, b_norm, s0, s1 = \
+        MPI.COMM_WORLD.allreduce(np.array([A_square_mesh.norm_squared(),
+                                           A_submesh.norm_squared(),
+                                           b_square_mesh.squared_norm(),
+                                           b_submesh.squared_norm(),
+                                           s_submesh, s_square_mesh]), op=MPI.SUM)
+    assert np.isclose(A0_norm, A_norm)
+    assert np.isclose(b0_norm, b_norm)
+    assert np.isclose(s0, s1)

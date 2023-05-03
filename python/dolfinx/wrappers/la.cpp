@@ -47,6 +47,8 @@ void declare_objects(py::module& m, const std::string& type)
       .def_property_readonly("dtype", [](const dolfinx::la::Vector<T>& self)
                              { return py::dtype::of<T>(); })
       .def("set", &dolfinx::la::Vector<T>::set, py::arg("v"))
+      .def("squared_norm", [](const dolfinx::la::Vector<T>& self)
+           { return dolfinx::la::squared_norm(self); })
       .def(
           "norm",
           [](dolfinx::la::Vector<T>& self, dolfinx::la::Norm type)
