@@ -18,6 +18,7 @@ from dolfinx.fem import (Constant, Function, FunctionSpace,
                          VectorFunctionSpace, assemble_scalar, form)
 from dolfinx.fem import assemble_matrix, assemble_vector
 from dolfinx.mesh import CellType, create_mesh, meshtags
+from dolfinx import default_scalar_type
 
 from mpi4py import MPI
 
@@ -496,7 +497,7 @@ def assemble_div_vector(k, offset):
     mesh = create_quad_mesh(offset)
     V = FunctionSpace(mesh, ("RTCF", k + 1))
     v = ufl.TestFunction(V)
-    L = form(ufl.inner(Constant(mesh, 1.0), ufl.div(v)) * ufl.dx)
+    L = form(ufl.inner(Constant(mesh, default_scalar_type(1.0)), ufl.div(v)) * ufl.dx)
     b = assemble_vector(L)
     _b = b.array[:]
     return _b
