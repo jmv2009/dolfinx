@@ -238,7 +238,7 @@ def test_evaluation(cell_type, space_type, space_order):
 
         for d in dofs:
             v = Function(V)
-            v.vector[:] = [1 if i == d else 0 for i in range(v.vector.local_size)]
+            v.x.array[:] = [1 if i == d else 0 for i in range(v.x.map.size_local)]
             values0 = v.eval(eval_points, [0 for i in eval_points])
             values1 = v.eval(eval_points, [1 for i in eval_points])
             if len(eval_points) == 1:
@@ -285,7 +285,7 @@ def test_integral(cell_type, space_type, space_order):
 
         for d in dofs:
             v = Function(V)
-            v.vector[:] = [1 if i == d else 0 for i, _ in enumerate(v.vector[:])]
+            v.x.array[:] = [1 if i == d else 0 for i, _ in enumerate(v.x.array[:])]
             if space_type in ["RT", "BDM", "RTCF", "NCF", "BDMCF", "AAF"]:
                 # Hdiv
                 def normal(x):
