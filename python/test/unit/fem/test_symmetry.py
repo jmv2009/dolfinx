@@ -9,7 +9,6 @@ import pytest
 
 import numpy as np
 import basix
-import dolfinx
 import ufl
 from basix.ufl import mixed_element, element
 from dolfinx.fem import FunctionSpace, form, assemble_matrix
