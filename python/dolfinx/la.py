@@ -8,13 +8,13 @@
 
 import numpy as np
 
+from dolfinx import has_petsc
 from dolfinx import cpp as _cpp
 from dolfinx.cpp.la import Norm, ScatterMode
 
-try:
+if has_petsc:
     from dolfinx.cpp.la.petsc import create_vector as create_petsc_vector
-except:
-    pass
+
 
 __all__ = ["orthonormalize", "is_orthonormal", "create_petsc_vector", "matrix_csr", "vector",
            "MatrixCSRMetaClass", "Norm", "ScatterMode", "VectorMetaClass", ]
