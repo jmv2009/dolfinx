@@ -22,7 +22,6 @@ from dolfinx import cpp as _cpp
 from dolfinx import la
 from dolfinx.cpp.fem import pack_coefficients as _pack_coefficients
 from dolfinx.cpp.fem import pack_constants as _pack_constants
-from dolfinx.cpp.fem import create_sparsity_pattern
 from dolfinx.fem import assemble
 from dolfinx.fem.bcs import DirichletBCMetaClass
 from dolfinx.fem.bcs import bcs_by_block as _bcs_by_block
@@ -35,7 +34,6 @@ from dolfinx.fem.function import Function as _Function
 import petsc4py
 import petsc4py.lib
 from petsc4py import PETSc
-import numpy as np
 
 
 def _extract_function_spaces(a: typing.List[typing.List[FormMetaClass]]):
