@@ -23,7 +23,6 @@ from dolfinx.mesh import (CellType, create_mesh, create_unit_cube,
                           meshtags)
 
 from mpi4py import MPI
-from petsc4py import PETSc
 
 
 @pytest.fixture
@@ -150,7 +149,7 @@ def test_interpolation_rank0(V):
     assert (w.x.array[:] == 1.0).all()
 
     num_vertices = V.mesh.topology.index_map(0).size_global
-    assert np.isclose(w.vector.norm(PETSc.NormType.N1) - num_vertices, 0)
+    assert np.isclose(w.x.squared_norm() - num_vertices, 0)
 
     f.t = 2.0
     w.interpolate(f.eval)
@@ -167,12 +166,12 @@ def test_interpolation_rank1(W):
 
     w = Function(W)
     w.interpolate(f)
-    x = w.vector
-    assert x.max()[1] == 1.0
-    assert x.min()[1] == 1.0
+    x = w.x.array
+    assert x.max() == 1.0
+    assert x.min() == 1.0
 
     num_vertices = W.mesh.topology.index_map(0).size_global
-    assert round(w.vector.norm(PETSc.NormType.N1) - 3 * num_vertices, 7) == 0
+    assert round(w.x.squared_norm() - 3 * num_vertices, 7) == 0
 
 
 @pytest.mark.parametrize("cell_type0", [CellType.hexahedron, CellType.tetrahedron])

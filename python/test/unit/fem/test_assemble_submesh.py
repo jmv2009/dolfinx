@@ -18,8 +18,7 @@ from dolfinx.mesh import (GhostMode, create_box, create_rectangle,
                           locate_entities, locate_entities_boundary)
 
 from mpi4py import MPI
-from petsc4py import PETSc
-
+from dolfinx import default_scalar_type
 
 def assemble(mesh, space, k):
     V = fem.FunctionSpace(mesh, (space, k))
@@ -27,7 +26,7 @@ def assemble(mesh, space, k):
     dx = ufl.Measure("dx", domain=mesh)
     ds = ufl.Measure("ds", domain=mesh)
 
-    c = fem.Constant(mesh, PETSc.ScalarType(0.75))
+    c = fem.Constant(mesh, default_scalar_type(0.75))
     a = fem.form(ufl.inner(c * u, v) * (dx + ds))
 
     facet_dim = mesh.topology.dim - 1
@@ -50,7 +49,6 @@ def assemble(mesh, space, k):
     b = assemble_vector(L)
     apply_lifting(b.array, [a], bcs=[[bc]])
     b.scatter_reverse(ScatterMode.add)
-#    b.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
     set_bc(b.array, [bc])
     s = mesh.comm.allreduce(fem.assemble_scalar(fem.form(ufl.inner(c * f, f) * (dx + ds))), op=MPI.SUM)
     return A, b, s
