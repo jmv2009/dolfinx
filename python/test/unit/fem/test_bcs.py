@@ -14,7 +14,7 @@ from dolfinx.fem import (Constant, Function, FunctionSpace,
                          form, locate_dofs_geometrical,
                          locate_dofs_topological)
 from dolfinx.fem import (apply_lifting, assemble_matrix, assemble_vector, set_bc)
-from dolfinx.fem.assemble import                          create_matrix, create_vector
+from dolfinx.fem.assemble import create_matrix, create_vector
 from dolfinx.mesh import (CellType, create_unit_cube, create_unit_square,
                           locate_entities_boundary)
 from dolfinx.la import ScatterMode

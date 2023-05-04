@@ -20,6 +20,7 @@ from dolfinx.mesh import (GhostMode, create_box, create_rectangle,
 from mpi4py import MPI
 from dolfinx import default_scalar_type
 
+
 def assemble(mesh, space, k):
     V = fem.FunctionSpace(mesh, (space, k))
     u, v = ufl.TrialFunction(V), ufl.TestFunction(V)
