@@ -278,28 +278,28 @@ def test_mixed_sub_interpolation():
         u, v = Function(V), Function(V)
         u.interpolate(U.sub(i))
         v.interpolate(f)
-        assert np.allclose(u.vector.array, v.vector.array)
+        assert np.allclose(u.x.array, v.x.array)
 
         # Same map, different elements
         V = VectorFunctionSpace(mesh, ("Lagrange", 1))
         u, v = Function(V), Function(V)
         u.interpolate(U.sub(i))
         v.interpolate(f)
-        assert np.allclose(u.vector.array, v.vector.array)
+        assert np.allclose(u.x.array, v.x.array)
 
         # Different maps (0)
         V = FunctionSpace(mesh, ("N1curl", 1))
         u, v = Function(V), Function(V)
         u.interpolate(U.sub(i))
         v.interpolate(f)
-        assert np.allclose(u.vector.array, v.vector.array)
+        assert np.allclose(u.x.array, v.x.array)
 
         # Different maps (1)
         V = FunctionSpace(mesh, ("RT", 2))
         u, v = Function(V), Function(V)
         u.interpolate(U.sub(i))
         v.interpolate(f)
-        assert np.allclose(u.vector.array, v.vector.array)
+        assert np.allclose(u.x.array, v.x.array)
 
         # Test with wrong shape
         V0 = FunctionSpace(mesh, P.sub_elements()[0])
