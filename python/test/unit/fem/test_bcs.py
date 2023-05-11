@@ -17,7 +17,7 @@ from dolfinx.fem import (apply_lifting, assemble_matrix, assemble_vector, set_bc
 from dolfinx.fem.assemble import create_matrix, create_vector
 from dolfinx.mesh import (CellType, create_unit_cube, create_unit_square,
                           locate_entities_boundary)
-from dolfinx.la import ScatterMode
+from dolfinx.la import InsertMode
 from dolfinx import default_scalar_type
 from ufl import dx, inner
 
@@ -94,7 +94,7 @@ def test_overlapping_bcs():
 #        b_loc.set(0)
     assemble_vector(b.array, L)
     apply_lifting(b.array, [a], [bcs])
-    b.scatter_reverse(ScatterMode.add)
+    b.scatter_reverse(InsertMode.add)
     set_bc(b.array, bcs)
     b.scatter_forward()
 

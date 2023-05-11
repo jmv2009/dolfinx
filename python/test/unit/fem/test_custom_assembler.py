@@ -26,7 +26,7 @@ from dolfinx.fem.petsc import assemble_matrix, load_petsc_lib
 from dolfinx.mesh import create_unit_square
 from ufl import dx, inner
 from dolfinx import default_scalar_type
-from dolfinx.la import ScatterMode
+from dolfinx.la import InsertMode
 
 import petsc4py.lib
 from mpi4py import MPI
@@ -295,7 +295,7 @@ def test_custom_mesh_loop_rank1():
         assemble_vector(b, (x_dofs, x), dofmap, num_owned_cells)
         end = time.time()
         print("Time (numba, pass {}): {}".format(i, end - start))
-    b0.x.scatter_reverse(ScatterMode.add)
+    b0.x.scatter_reverse(InsertMode.add)
     nb = b0.x.map.size_local
     bsum = mesh.comm.allreduce(b0.x.array[:nb].sum(), op=MPI.SUM)
     assert bsum == pytest.approx(1.0)
@@ -330,7 +330,7 @@ def test_custom_mesh_loop_rank1():
     dolfinx.fem.assemble_vector(b1.array, Lf)
     end = time.time()
     print("Time (C++, pass 1):", end - start)
-    b1.scatter_reverse(ScatterMode.add)
+    b1.scatter_reverse(InsertMode.add)
     assert np.linalg.norm(b1.array - b0.x.array) == pytest.approx(0.0)
 
     # Assemble using generated tabulate_tensor kernel and Numba assembler
@@ -350,7 +350,7 @@ def test_custom_mesh_loop_rank1():
         assemble_vector_ufc(b, kernel, (x_dofs, x), dofmap, num_owned_cells)
         end = time.time()
         print("Time (numba/cffi, pass {}): {}".format(i, end - start))
-    b3.x.scatter_reverse(ScatterMode.add)
+    b3.x.scatter_reverse(InsertMode.add)
     assert np.linalg.norm(b3.x.array - b0.x.array) == pytest.approx(0.0)
 
 

@@ -11,7 +11,7 @@ import pytest
 import ufl
 from dolfinx.fem import (Constant, Function, FunctionSpace, assemble_scalar,
                          dirichletbc, form, assemble_matrix, assemble_vector, apply_lifting, set_bc)
-from dolfinx.la import ScatterMode
+from dolfinx.la import InsertMode
 from dolfinx.mesh import (GhostMode, Mesh, create_unit_square, locate_entities,
                           locate_entities_boundary, meshtags,
                           meshtags_from_entities)
@@ -76,15 +76,13 @@ def test_assembly_dx_domains(mode, meshtags_factory):
     b = assemble_vector(L)
 
     apply_lifting(b.array, [a], [[bc]])
-    b.scatter_reverse(ScatterMode.add)
-#    b.ghostUpdate(addv=PETSc.InsertMode.ADD_VALUES, mode=PETSc.ScatterMode.REVERSE)
+    b.scatter_reverse(InsertMode.add)
     set_bc(b.array, [bc])
 
     L2 = form(ufl.inner(w, v) * dx)
     b2 = assemble_vector(L2)
     apply_lifting(b2.array, [a], [[bc]])
-    b2.scatter_reverse(ScatterMode.add)
-#    b2.ghostUpdate(addv=PETSc.InsertMode.ADD_VALUES, mode=PETSc.ScatterMode.REVERSE)
+    b2.scatter_reverse(InsertMode.add)
     set_bc(b2.array, [bc])
     assert linalg.norm(b.array - b2.array) < 1.0e-12
 
@@ -158,15 +156,13 @@ def test_assembly_ds_domains(mode):
     b = assemble_vector(L)
 
     apply_lifting(b.array, [a], [[bc]])
-    b.scatter_reverse(ScatterMode.add)
-#    b.ghostUpdate(addv=PETSc.InsertMode.ADD_VALUES, mode=PETSc.ScatterMode.REVERSE)
+    b.scatter_reverse(InsertMode.add)
     set_bc(b.array, [bc])
 
     L2 = form(ufl.inner(w, v) * ds)
     b2 = assemble_vector(L2)
     apply_lifting(b2.array, [a2], [[bc]])
-    b2.scatter_reverse(ScatterMode.add)
-#    b2.ghostUpdate(addv=PETSc.InsertMode.ADD_VALUES, mode=PETSc.ScatterMode.REVERSE)
+    b2.scatter_reverse(InsertMode.add)
     set_bc(b2.array, [bc])
     assert linalg.norm(b.array) == pytest.approx(linalg.norm(b2.array), 1.0e-12)
 
