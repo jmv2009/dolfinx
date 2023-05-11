@@ -246,6 +246,194 @@ void declare_assembly_functions(py::module& m)
       py::arg("scale") = T(1));
 }
 
+void petsc_module(py::module& m)
+{
+  // Create PETSc vectors and matrices
+  m.def("create_vector_block", &dolfinx::fem::petsc::create_vector_block,
+        py::return_value_policy::take_ownership, py::arg("maps"),
+        "Create a monolithic vector for multiple (stacked) linear forms.");
+  m.def("create_vector_nest", &dolfinx::fem::petsc::create_vector_nest,
+        py::return_value_policy::take_ownership, py::arg("maps"),
+        "Create nested vector for multiple (stacked) linear forms.");
+  m.def("create_matrix", dolfinx::fem::petsc::create_matrix<double>,
+        py::return_value_policy::take_ownership, py::arg("a"),
+        py::arg("type") = std::string(),
+        "Create a PETSc Mat for bilinear form.");
+  m.def("create_matrix_block",
+        &dolfinx::fem::petsc::create_matrix_block<double>,
+        py::return_value_policy::take_ownership, py::arg("a"),
+        py::arg("type") = std::string(),
+        "Create monolithic sparse matrix for stacked bilinear forms.");
+  m.def("create_matrix_nest", &dolfinx::fem::petsc::create_matrix_nest<double>,
+        py::return_value_policy::take_ownership, py::arg("a"),
+        py::arg("types") = std::vector<std::vector<std::string>>(),
+        "Create nested sparse matrix for bilinear forms.");
+
+  // PETSc Matrices
+  m.def(
+      "assemble_matrix",
+      [](Mat A, const dolfinx::fem::Form<PetscScalar, double>& a,
+         const py::array_t<PetscScalar, py::array::c_style>& constants,
+         const std::map<std::pair<dolfinx::fem::IntegralType, int>,
+                        py::array_t<PetscScalar, py::array::c_style>>&
+             coefficients,
+         const std::vector<std::shared_ptr<
+             const dolfinx::fem::DirichletBC<PetscScalar, double>>>& bcs,
+         bool unrolled)
+      {
+        if (unrolled)
+        {
+          auto set_fn = dolfinx::la::petsc::Matrix::set_block_expand_fn(
+              A, a.function_spaces()[0]->dofmap()->bs(),
+              a.function_spaces()[1]->dofmap()->bs(), ADD_VALUES);
+          dolfinx::fem::assemble_matrix(
+              set_fn, a, std::span(constants.data(), constants.size()),
+              py_to_cpp_coeffs(coefficients), bcs);
+        }
+        else
+        {
+          dolfinx::fem::assemble_matrix(
+              dolfinx::la::petsc::Matrix::set_block_fn(A, ADD_VALUES), a,
+              std::span(constants.data(), constants.size()),
+              py_to_cpp_coeffs(coefficients), bcs);
+        }
+      },
+      py::arg("A"), py::arg("a"), py::arg("constants"), py::arg("coeffs"),
+      py::arg("bcs"), py::arg("unrolled") = false,
+      "Assemble bilinear form into an existing PETSc matrix");
+  m.def(
+      "assemble_matrix",
+      [](Mat A, const dolfinx::fem::Form<PetscScalar, double>& a,
+         const py::array_t<PetscScalar, py::array::c_style>& constants,
+         const std::map<std::pair<dolfinx::fem::IntegralType, int>,
+                        py::array_t<PetscScalar, py::array::c_style>>&
+             coefficients,
+         const py::array_t<std::int8_t, py::array::c_style>& rows0,
+         const py::array_t<std::int8_t, py::array::c_style>& rows1,
+         bool unrolled)
+      {
+        if (rows0.ndim() != 1 or rows1.ndim())
+        {
+          throw std::runtime_error(
+              "Expected 1D arrays for boundary condition rows/columns");
+        }
+
+        std::function<int(const std::span<const std::int32_t>&,
+                          const std::span<const std::int32_t>&,
+                          const std::span<const PetscScalar>&)>
+            set_fn;
+        if (unrolled)
+        {
+          set_fn = dolfinx::la::petsc::Matrix::set_block_expand_fn(
+              A, a.function_spaces()[0]->dofmap()->bs(),
+              a.function_spaces()[1]->dofmap()->bs(), ADD_VALUES);
+        }
+        else
+          set_fn = dolfinx::la::petsc::Matrix::set_block_fn(A, ADD_VALUES);
+
+        dolfinx::fem::assemble_matrix(
+            set_fn, a, std::span(constants.data(), constants.size()),
+            py_to_cpp_coeffs(coefficients),
+            std::span(rows0.data(), rows0.size()),
+            std::span(rows1.data(), rows1.size()));
+      },
+      py::arg("A"), py::arg("a"), py::arg("constants"), py::arg("coeffs"),
+      py::arg("rows0"), py::arg("rows1"), py::arg("unrolled") = false);
+  m.def(
+      "insert_diagonal",
+      [](Mat A, const dolfinx::fem::FunctionSpace<double>& V,
+         const std::vector<std::shared_ptr<
+             const dolfinx::fem::DirichletBC<PetscScalar, double>>>& bcs,
+         PetscScalar diagonal)
+      {
+        dolfinx::fem::set_diagonal(
+            dolfinx::la::petsc::Matrix::set_fn(A, INSERT_VALUES), V, bcs,
+            diagonal);
+      },
+      py::arg("A"), py::arg("V"), py::arg("bcs"), py::arg("diagonal"));
+
+  m.def(
+      "discrete_gradient",
+      [](const dolfinx::fem::FunctionSpace<double>& V0,
+         const dolfinx::fem::FunctionSpace<double>& V1)
+      {
+        assert(V0.mesh());
+        auto mesh = V0.mesh();
+        assert(V1.mesh());
+        assert(mesh == V1.mesh());
+        MPI_Comm comm = mesh->comm();
+
+        std::shared_ptr<const dolfinx::fem::DofMap> dofmap0 = V0.dofmap();
+        assert(dofmap0);
+        std::shared_ptr<const dolfinx::fem::DofMap> dofmap1 = V1.dofmap();
+        assert(dofmap1);
+
+        // Create and build  sparsity pattern
+        assert(dofmap0->index_map);
+        assert(dofmap1->index_map);
+        dolfinx::la::SparsityPattern sp(
+            comm, {dofmap1->index_map, dofmap0->index_map},
+            {dofmap1->index_map_bs(), dofmap0->index_map_bs()});
+
+        int tdim = mesh->topology()->dim();
+        auto map = mesh->topology()->index_map(tdim);
+        assert(map);
+        std::vector<std::int32_t> c(map->size_local(), 0);
+        std::iota(c.begin(), c.end(), 0);
+        dolfinx::fem::sparsitybuild::cells(sp, c, {*dofmap1, *dofmap0});
+        sp.finalize();
+
+        // Build operator
+        Mat A = dolfinx::la::petsc::create_matrix(comm, sp);
+        MatSetOption(A, MAT_IGNORE_ZERO_ENTRIES, PETSC_TRUE);
+        dolfinx::fem::discrete_gradient<PetscScalar>(
+            *V0.mesh()->topology_mutable(), {*V0.element(), *V0.dofmap()},
+            {*V1.element(), *V1.dofmap()},
+            dolfinx::la::petsc::Matrix::set_fn(A, INSERT_VALUES));
+        return A;
+      },
+      py::return_value_policy::take_ownership, py::arg("V0"), py::arg("V1"));
+  m.def(
+      "interpolation_matrix",
+      [](const dolfinx::fem::FunctionSpace<double>& V0,
+         const dolfinx::fem::FunctionSpace<double>& V1)
+      {
+        assert(V0.mesh());
+        auto mesh = V0.mesh();
+        assert(V1.mesh());
+        assert(mesh == V1.mesh());
+        MPI_Comm comm = mesh->comm();
+
+        std::shared_ptr<const dolfinx::fem::DofMap> dofmap0 = V0.dofmap();
+        assert(dofmap0);
+        std::shared_ptr<const dolfinx::fem::DofMap> dofmap1 = V1.dofmap();
+        assert(dofmap1);
+
+        // Create and build  sparsity pattern
+        assert(dofmap0->index_map);
+        assert(dofmap1->index_map);
+        dolfinx::la::SparsityPattern sp(
+            comm, {dofmap1->index_map, dofmap0->index_map},
+            {dofmap1->index_map_bs(), dofmap0->index_map_bs()});
+
+        int tdim = mesh->topology()->dim();
+        auto map = mesh->topology()->index_map(tdim);
+        assert(map);
+        std::vector<std::int32_t> c(map->size_local(), 0);
+        std::iota(c.begin(), c.end(), 0);
+        dolfinx::fem::sparsitybuild::cells(sp, c, {*dofmap1, *dofmap0});
+        sp.finalize();
+
+        // Build operator
+        Mat A = dolfinx::la::petsc::create_matrix(comm, sp);
+        MatSetOption(A, MAT_IGNORE_ZERO_ENTRIES, PETSC_TRUE);
+        dolfinx::fem::interpolation_matrix<PetscScalar>(
+            V0, V1, dolfinx::la::petsc::Matrix::set_block_fn(A, INSERT_VALUES));
+        return A;
+      },
+      py::return_value_policy::take_ownership, py::arg("V0"), py::arg("V1"));
+}
+
 } // namespace
 
 namespace dolfinx_wrappers

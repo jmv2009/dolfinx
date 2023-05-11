@@ -23,8 +23,8 @@ namespace py = pybind11;
 
 namespace
 {
-// ScatterMode types
-enum class PyScatterMode
+// InsertMode types
+enum class PyInsertMode
 {
   add,
   insert
@@ -54,7 +54,7 @@ void declare_objects(py::module& m, const std::string& type)
           [](dolfinx::la::Vector<T>& self, dolfinx::la::Norm type)
           { return dolfinx::la::norm(self, type); },
           py::arg("type") = dolfinx::la::Norm::l2)
-      .def_property_readonly("map", &dolfinx::la::Vector<T>::map)
+      .def_property_readonly("index_map", &dolfinx::la::Vector<T>::index_map)
       .def_property_readonly("bs", &dolfinx::la::Vector<T>::bs)
       .def_property_readonly("array",
                              [](dolfinx::la::Vector<T>& self)
@@ -66,18 +66,18 @@ void declare_objects(py::module& m, const std::string& type)
       .def("scatter_forward", &dolfinx::la::Vector<T>::scatter_fwd)
       .def(
           "scatter_reverse",
-          [](dolfinx::la::Vector<T>& self, PyScatterMode mode)
+          [](dolfinx::la::Vector<T>& self, PyInsertMode mode)
           {
             switch (mode)
             {
-            case PyScatterMode::add: // Add
+            case PyInsertMode::add: // Add
               self.scatter_rev(std::plus<T>());
               break;
-            case PyScatterMode::insert: // Insert
+            case PyInsertMode::insert: // Insert
               self.scatter_rev([](T /*a*/, T b) { return b; });
               break;
             default:
-              throw std::runtime_error("ScatterMode not recognized.");
+              throw std::runtime_error("InsertMode not recognized.");
               break;
             }
           },
@@ -93,7 +93,7 @@ void declare_objects(py::module& m, const std::string& type)
            py::arg("p"))
       .def_property_readonly("dtype", [](const dolfinx::la::MatrixCSR<T>& self)
                              { return py::dtype::of<T>(); })
-      .def("norm_squared", &dolfinx::la::MatrixCSR<T>::norm_squared)
+      .def("squared_norm", &dolfinx::la::MatrixCSR<T>::squared_norm)
       .def("mat_add_values", &dolfinx::la::MatrixCSR<T>::mat_add_values)
       .def("set",
            static_cast<void (dolfinx::la::MatrixCSR<T>::*)(T)>(
@@ -104,7 +104,7 @@ void declare_objects(py::module& m, const std::string& type)
            [](const dolfinx::la::MatrixCSR<T>& self)
            {
              std::size_t nrows = self.num_all_rows();
-             auto map_col = self.index_maps()[1];
+             auto map_col = self.index_map(1);
              std::size_t ncols = map_col->size_local() + map_col->num_ghosts();
              return dolfinx_wrappers::as_pyarray(self.to_dense(),
                                                  std::array{nrows, ncols});
@@ -140,9 +140,9 @@ namespace dolfinx_wrappers
 {
 void la(py::module& m)
 {
-  py::enum_<PyScatterMode>(m, "ScatterMode")
-      .value("add", PyScatterMode::add)
-      .value("insert", PyScatterMode::insert);
+  py::enum_<PyInsertMode>(m, "InsertMode")
+      .value("add", PyInsertMode::add)
+      .value("insert", PyInsertMode::insert);
 
   py::enum_<dolfinx::la::Norm>(m, "Norm")
       .value("l1", dolfinx::la::Norm::l1)
@@ -180,12 +180,12 @@ void la(py::module& m)
           py::arg("comm"), py::arg("patterns"), py::arg("maps"), py::arg("bs"))
       .def("index_map", &dolfinx::la::SparsityPattern::index_map,
            py::arg("dim"))
-    .def("block_size", &dolfinx::la::SparsityPattern::block_size,
+      .def("block_size", &dolfinx::la::SparsityPattern::block_size,
            py::arg("dim"))
       .def("column_index_map", &dolfinx::la::SparsityPattern::column_index_map)
-       .def("nnz_diag", &dolfinx::la::SparsityPattern::nnz_diag)
-        .def("nnz_off_diag", &dolfinx::la::SparsityPattern::nnz_off_diag)
-      .def("assemble",   &dolfinx::la::SparsityPattern::assemble)
+      .def("nnz_diag", &dolfinx::la::SparsityPattern::nnz_diag)
+      .def("nnz_off_diag", &dolfinx::la::SparsityPattern::nnz_off_diag)
+      .def("finalize", &dolfinx::la::SparsityPattern::finalize)
       .def_property_readonly("num_nonzeros",
                              &dolfinx::la::SparsityPattern::num_nonzeros)
       .def(

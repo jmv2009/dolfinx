@@ -198,7 +198,7 @@ void petsc_module_fem(py::module& m)
         std::vector<std::int32_t> c(map->size_local(), 0);
         std::iota(c.begin(), c.end(), 0);
         dolfinx::fem::sparsitybuild::cells(sp, c, {*dofmap1, *dofmap0});
-        sp.assemble();
+        sp.finalize();
 
         // Build operator
         Mat A = dolfinx::la::petsc::create_matrix(comm, sp);
@@ -239,7 +239,7 @@ void petsc_module_fem(py::module& m)
         std::vector<std::int32_t> c(map->size_local(), 0);
         std::iota(c.begin(), c.end(), 0);
         dolfinx::fem::sparsitybuild::cells(sp, c, {*dofmap1, *dofmap0});
-        sp.assemble();
+        sp.finalize();
 
         // Build operator
         Mat A = dolfinx::la::petsc::create_matrix(comm, sp);
