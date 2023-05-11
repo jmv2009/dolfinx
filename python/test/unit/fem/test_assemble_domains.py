@@ -144,11 +144,11 @@ def test_assembly_ds_domains(mode):
     a = form(w * ufl.inner(u, v) * (ds(1) + ds(2) + ds(3) + ds(6)))
     A = assemble_matrix(a)
     A.finalize()
-    norm1 = A.norm_squared()
+    norm1 = A.squared_norm()
     a2 = form(w * ufl.inner(u, v) * ds)
     A2 = assemble_matrix(a2)
     A2.finalize()
-    norm2 = A2.norm_squared()
+    norm2 = A2.squared_norm()
     assert norm1 == pytest.approx(norm2, 1.0e-12)
 
     # Assemble vector

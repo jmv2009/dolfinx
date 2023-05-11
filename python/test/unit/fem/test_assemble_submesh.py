@@ -81,8 +81,8 @@ def test_submesh_cell_assembly(d, n, k, space, ghost_mode):
     A_submesh, b_submesh, s_submesh = assemble(submesh, space, k)
 
     A0_norm, A_norm, b0_norm, b_norm, s0, s1 = \
-        MPI.COMM_WORLD.allreduce(np.array([A_mesh_0.norm_squared(),
-                                           A_submesh.norm_squared(),
+        MPI.COMM_WORLD.allreduce(np.array([A_mesh_0.squared_norm(),
+                                           A_submesh.squared_norm(),
                                            b_mesh_0.squared_norm(),
                                            b_submesh.squared_norm(),
                                            s_mesh_0, s_submesh]), op=MPI.SUM)
@@ -109,8 +109,8 @@ def test_submesh_facet_assembly(n, k, space, ghost_mode):
     A_square_mesh, b_square_mesh, s_square_mesh = assemble(square_mesh, space, k)
 
     A0_norm, A_norm, b0_norm, b_norm, s0, s1 = \
-        MPI.COMM_WORLD.allreduce(np.array([A_square_mesh.norm_squared(),
-                                           A_submesh.norm_squared(),
+        MPI.COMM_WORLD.allreduce(np.array([A_square_mesh.squared_norm(),
+                                           A_submesh.squared_norm(),
                                            b_square_mesh.squared_norm(),
                                            b_submesh.squared_norm(),
                                            s_submesh, s_square_mesh]), op=MPI.SUM)

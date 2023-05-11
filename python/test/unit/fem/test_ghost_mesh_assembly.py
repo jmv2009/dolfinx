@@ -55,7 +55,7 @@ def test_ghost_mesh_assembly(mode, dx, ds):
     b.scatter_reverse(InsertMode.add)
 
     # Check that the norms are the same for all three modes
-    normA = np.sqrt(A.norm_squared())
+    normA = np.sqrt(A.squared_norm())
     assert normA == pytest.approx(0.6713621455570528, rel=1.e-6, abs=1.e-12)
 
     normb = np.sqrt(b.squared_norm())
@@ -83,5 +83,5 @@ def test_ghost_mesh_dS_assembly(mode, dS):
     A.finalize()
 
     # Check that the norms are the same for all three modes
-    normA = np.sqrt(A.norm_squared())
+    normA = np.sqrt(A.squared_norm())
     assert normA == pytest.approx(2.1834054713561906, rel=1.e-6, abs=1.e-12)

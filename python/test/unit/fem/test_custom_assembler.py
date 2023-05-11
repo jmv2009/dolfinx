@@ -296,7 +296,7 @@ def test_custom_mesh_loop_rank1():
         end = time.time()
         print("Time (numba, pass {}): {}".format(i, end - start))
     b0.x.scatter_reverse(InsertMode.add)
-    nb = b0.x.map.size_local
+    nb = b0.x.index_map.size_local
     bsum = mesh.comm.allreduce(b0.x.array[:nb].sum(), op=MPI.SUM)
     assert bsum == pytest.approx(1.0)
 
