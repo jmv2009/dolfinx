@@ -12,7 +12,7 @@ import ufl
 from dolfinx import fem
 from dolfinx.fem import Function, FunctionSpace, form
 from dolfinx.mesh import GhostMode, create_unit_square
-from dolfinx.la import ScatterMode
+from dolfinx.la import InsertMode
 from ufl import avg, inner
 
 from mpi4py import MPI
@@ -52,7 +52,7 @@ def test_ghost_mesh_assembly(mode, dx, ds):
     A = fem.assemble_matrix(a)
     A.finalize()
     b = fem.assemble_vector(L)
-    b.scatter_reverse(ScatterMode.add)
+    b.scatter_reverse(InsertMode.add)
 
     # Check that the norms are the same for all three modes
     normA = np.sqrt(A.norm_squared())

@@ -11,7 +11,7 @@ import pytest
 
 import ufl
 from dolfinx import fem
-from dolfinx.la import ScatterMode
+from dolfinx.la import InsertMode
 from dolfinx.fem import assemble_vector, assemble_matrix, apply_lifting, set_bc
 from dolfinx.mesh import (GhostMode, create_box, create_rectangle,
                           create_submesh, create_unit_cube, create_unit_square,
@@ -49,7 +49,7 @@ def assemble(mesh, space, k):
     L = fem.form(ufl.inner(c * f, v) * (dx + ds))
     b = assemble_vector(L)
     apply_lifting(b.array, [a], bcs=[[bc]])
-    b.scatter_reverse(ScatterMode.add)
+    b.scatter_reverse(InsertMode.add)
     set_bc(b.array, [bc])
     s = mesh.comm.allreduce(fem.assemble_scalar(fem.form(ufl.inner(c * f, f) * (dx + ds))), op=MPI.SUM)
     return A, b, s
