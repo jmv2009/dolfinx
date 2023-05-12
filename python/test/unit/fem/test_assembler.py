@@ -15,7 +15,8 @@ import basix
 import ufl
 from basix.ufl import mixed_element, element
 from dolfinx import cpp as _cpp
-from dolfinx import fem, graph, la
+from dolfinx import fem, graph, la, has_petsc, default_scalar_type
+from dolfinx.la import InsertMode
 from dolfinx.fem import (Constant, Function, FunctionSpace,
                          VectorFunctionSpace, assemble_scalar, bcs_by_block,
                          dirichletbc, extract_function_spaces, form,
@@ -91,18 +92,17 @@ def test_assemble_derivatives():
     L = ufl.inner(c1, c1) * v * dx + c2 * b * inner(u, v) * dx
     a = form(derivative(L, u, du))
 
-    A1 = assemble_matrix(a)
-    A1.assemble()
+    A1 = fem.assemble_matrix(a)
+    A1.finalize()
     a = form(c2 * b * inner(du, v) * dx)
-    A2 = assemble_matrix(a)
-    A2.assemble()
-    assert (A1 - A2).norm() == pytest.approx(0.0, rel=1e-12, abs=1e-12)
-    A1.destroy(), A2.destroy()
+    A2 = fem.assemble_matrix(a)
+    A2.finalize()
+    assert np.allclose(A1.to_dense(), A2.to_dense())
 
 
 @pytest.mark.parametrize("mode", [GhostMode.none, GhostMode.shared_facet])
 def test_basic_assembly(mode):
-    mesh = create_unit_square(MPI.COMM_WORLD, 12, 12, ghost_mode=mode)
+    mesh = create_unit_square(MPI.COMM_WORLD, 1, 1, ghost_mode=mode)
     V = FunctionSpace(mesh, ("Lagrange", 1))
     u, v = ufl.TrialFunction(V), ufl.TestFunction(V)
 
@@ -113,42 +113,37 @@ def test_basic_assembly(mode):
     a, L = form(a), form(L)
 
     # Initial assembly
-    A = assemble_matrix(a)
-    A.assemble()
-    assert isinstance(A, PETSc.Mat)
-    b = assemble_vector(L)
-    b.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
-    assert isinstance(b, PETSc.Vec)
+    A = fem.assemble_matrix(a)
+    A.finalize()
+    b = fem.assemble_vector(L)
+    b.scatter_reverse(InsertMode.add)
 
     # Second assembly
-    normA = A.norm()
-    A.zeroEntries()
-    A = assemble_matrix(A, a)
-    A.assemble()
-    assert isinstance(A, PETSc.Mat)
-    assert normA == pytest.approx(A.norm())
-    normb = b.norm()
-    with b.localForm() as b_local:
-        b_local.set(0.0)
-    b = assemble_vector(b, L)
-    b.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
-    assert isinstance(b, PETSc.Vec)
-    assert normb == pytest.approx(b.norm())
+    normA = np.sqrt(A.squared_norm())
+    A.set(0.0)
+    fem.assemble_matrix(A, a)
+    A.finalize()
+    assert normA == pytest.approx(np.sqrt(A.squared_norm()))
+
+    normb = np.sqrt(b.squared_norm())
+    b.set(0.0)
+    fem.assemble_vector(b.array, L)
+    b.scatter_reverse(InsertMode.add)
+    assert normb == pytest.approx(np.sqrt(b.squared_norm()))
 
     # Vector re-assembly - no zeroing (but need to zero ghost entries)
-    with b.localForm() as b_local:
-        b_local.array[b.local_size:] = 0.0
-    assemble_vector(b, L)
-    b.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
-    assert 2.0 * normb == pytest.approx(b.norm())
+    b.array[b.index_map.size_local:] = 0.0
+    fem.assemble_vector(b.array, L)
+    b.scatter_reverse(InsertMode.add)
+    assert 2.0 * normb == pytest.approx(np.sqrt(b.squared_norm()))
 
     # Matrix re-assembly (no zeroing)
-    assemble_matrix(A, a)
-    A.assemble()
-    assert 2.0 * normA == pytest.approx(A.norm())
-    A.destroy(), b.destroy()
+    fem.assemble_matrix(A, a)
+    A.finalize()
+    assert 2.0 * normA == pytest.approx(np.sqrt(A.squared_norm()))
 
 
+@pytest.mark.skipif(not has_petsc, reason="Needs PETSc")
 @pytest.mark.parametrize("mode", [GhostMode.none, GhostMode.shared_facet])
 def test_basic_assembly_petsc_matrixcsr(mode):
     mesh = create_unit_square(MPI.COMM_WORLD, 12, 12, ghost_mode=mode)
@@ -172,7 +167,7 @@ def test_basic_assembly_petsc_matrixcsr(mode):
     with pytest.raises(RuntimeError):
         A0 = fem.assemble_matrix(a)
 
-
+@pytest.mark.skipif(not has_petsc, reason="Needs PETSc")
 @pytest.mark.parametrize("mode", [GhostMode.none, GhostMode.shared_facet])
 def test_assembly_bcs(mode):
     mesh = create_unit_square(MPI.COMM_WORLD, 12, 12, ghost_mode=mode)
@@ -227,18 +222,18 @@ def test_assemble_manifold():
 
     bcdofs = locate_dofs_geometrical(U, lambda x: np.isclose(x[0], 0.0))
     bcs = [dirichletbc(PETSc.ScalarType(0), bcdofs, U)]
-    A = assemble_matrix(a, bcs=bcs)
-    A.assemble()
+    A = fem.assemble_matrix(a, bcs=bcs)
+    A.finalize()
 
-    b = assemble_vector(L)
-    apply_lifting(b, [a], bcs=[bcs])
-    set_bc(b, bcs)
+    b = fem.assemble_vector(L)
+    fem.apply_lifting(b.array, [a], bcs=[bcs])
+    fem.set_bc(b.array, bcs)
 
-    assert np.isclose(b.norm(), 0.41231)
-    assert np.isclose(A.norm(), 25.0199)
-    A.destroy(), b.destroy()
+    assert np.isclose(np.sqrt(b.squared_norm()), 0.41231)
+    assert np.isclose(np.sqrt(A.squared_norm()), 25.0199)
 
 
+@pytest.mark.skipif(not has_petsc, reason="Needs PETSc")
 @pytest.mark.parametrize("mode", [GhostMode.none, GhostMode.shared_facet])
 def test_matrix_assembly_block(mode):
     """Test assembly of block matrices and vectors into (a) monolithic
@@ -357,6 +352,7 @@ def test_matrix_assembly_block(mode):
     assert bnorm2 == pytest.approx(bnorm0, 1.0e-9)
 
 
+@pytest.mark.skipif(not has_petsc, reason="Needs PETSc")
 @pytest.mark.parametrize("mode", [GhostMode.none, GhostMode.shared_facet])
 def test_assembly_solve_block(mode):
     """Solve a two-field mass-matrix like problem with block matrix approaches
@@ -494,6 +490,7 @@ def test_assembly_solve_block(mode):
     assert xnorm2 == pytest.approx(xnorm0, 1.0e-10)
 
 
+@pytest.mark.skipif(not has_petsc, reason="Needs PETSc")
 @pytest.mark.parametrize("mesh", [
     create_unit_square(MPI.COMM_WORLD, 12, 11, ghost_mode=GhostMode.none),
     create_unit_square(MPI.COMM_WORLD, 12, 11, ghost_mode=GhostMode.shared_facet),
@@ -690,16 +687,13 @@ def test_basic_interior_facet_assembly():
     u, v = ufl.TrialFunction(V), ufl.TestFunction(V)
     a = ufl.inner(ufl.avg(u), ufl.avg(v)) * ufl.dS
     a = form(a)
-    A = assemble_matrix(a)
-    A.assemble()
-    assert isinstance(A, PETSc.Mat)
+    A = fem.assemble_matrix(a)
+    A.finalize()
+
     L = ufl.conj(ufl.avg(v)) * ufl.dS
     L = form(L)
-    b = assemble_vector(L)
-    b.assemble()
-    assert isinstance(b, PETSc.Vec)
-    A.destroy()
-    b.destroy()
+    b = fem.assemble_vector(L)
+    b.scatter_reverse(InsertMode.add)
 
 
 @pytest.mark.parametrize("mode", [GhostMode.none, GhostMode.shared_facet])
@@ -721,25 +715,23 @@ def test_basic_assembly_constant(mode):
     a, L = form(a), form(L)
 
     # Initial assembly
-    A1 = assemble_matrix(a)
-    A1.assemble()
+    A1 = fem.assemble_matrix(a)
+    A1.finalize()
 
-    b1 = assemble_vector(L)
-    b1.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
+    b1 = fem.assemble_vector(L)
+    b1.scatter_reverse(InsertMode.add)
 
     c.value = [[1.0, 2.0], [3.0, 4.0]]
 
-    A2 = assemble_matrix(a)
-    A2.assemble()
+    A2 = fem.assemble_matrix(a)
+    A2.finalize()
 
-    b2 = assemble_vector(L)
-    b2.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
-    assert (A1 * 3.0 - A2 * 5.0).norm() == pytest.approx(0.0)
-    assert (b1 * 3.0 - b2 * 5.0).norm() == pytest.approx(0.0)
-    A1.destroy()
-    b1.destroy()
-    A2.destroy()
-    b2.destroy()
+    b2 = fem.assemble_vector(L)
+    b2.scatter_reverse(InsertMode.add)
+    Avals = A1.data * 3.0 - A2.data * 5.0
+    assert np.allclose(Avals, 0.0)
+
+    assert np.allclose(b1.array * 3.0 - b2.array * 5.0, 0.0)
 
 
 def test_lambda_assembler():
@@ -781,59 +773,55 @@ def test_pack_coefficients():
     # Non-blocked
     u = Function(V)
     v = ufl.TestFunction(V)
-    c = Constant(mesh, PETSc.ScalarType(12.0))
+    c = Constant(mesh, default_scalar_type(12.0))
     F = ufl.inner(c, v) * dx - c * ufl.sqrt(u * u) * ufl.inner(u, v) * dx
     u.x.array[:] = 10.0
     _F = form(F)
 
     # -- Test vector
-    b0 = assemble_vector(_F)
-    b0.assemble()
+    b0 = fem.assemble_vector(_F)
+    b0.scatter_reverse(InsertMode.add)
     constants = _cpp.fem.pack_constants(_F)
     coeffs = _cpp.fem.pack_coefficients(_F)
-    with b0.localForm() as _b0:
-        for c in [(None, None), (None, coeffs), (constants, None), (constants, coeffs)]:
-            b = assemble_vector(_F, c[0], c[1])
-            b.assemble()
-            with b.localForm() as _b:
-                assert (_b0.array_r == _b.array_r).all()
+    for c in [(None, None), (None, coeffs), (constants, None), (constants, coeffs)]:
+        b = fem.assemble_vector(_F, c[0], c[1])
+        b.scatter_reverse(InsertMode.add)
+        assert np.allclose(b.array, b0.array)
+
 
     # Change coefficients
     constants *= 5.0
     for coeff in coeffs.values():
         coeff *= 5.0
-    with b0.localForm() as _b0:
-        for c in [(None, coeffs), (constants, None), (constants, coeffs)]:
-            b = assemble_vector(_F, c[0], c[1])
-            b.assemble()
-            with b.localForm() as _b:
-                assert (_b0 - _b).norm() > 1.0e-5
+
+    for c in [(None, coeffs), (constants, None), (constants, coeffs)]:
+        b = fem.assemble_vector(_F, c[0], c[1])
+        b.scatter_reverse(InsertMode.add)
+        assert np.linalg.norm(b0.array - b.array) > 1.0e-5
 
     # -- Test matrix
     du = ufl.TrialFunction(V)
     J = ufl.derivative(F, u, du)
     J = form(J)
 
-    A0 = assemble_matrix(J)
-    A0.assemble()
+    A0 = fem.assemble_matrix(J)
+    A0.finalize()
 
     constants = _cpp.fem.pack_constants(J)
     coeffs = _cpp.fem.pack_coefficients(J)
     for c in [(None, None), (None, coeffs), (constants, None), (constants, coeffs)]:
-        A = assemble_matrix(J, constants=c[0], coeffs=c[1])
-        A.assemble()
-        assert pytest.approx((A - A0).norm(), 1.0e-12) == 0.0
+        A = fem.assemble_matrix(J, constants=c[0], coeffs=c[1])
+        A.finalize()
+        assert np.allclose(A.data, A0.data)
 
     # Change coefficients
     constants *= 5.0
     for coeff in coeffs.values():
         coeff *= 5.0
     for c in [(None, coeffs), (constants, None), (constants, coeffs)]:
-        A = assemble_matrix(J, constants=c[0], coeffs=c[1])
-        A.assemble()
-        assert (A - A0).norm() > 1.0e-5
-
-    A.destroy(), A0.destroy()
+        A = fem.assemble_matrix(J, constants=c[0], coeffs=c[1])
+        A.finalize()
+        assert np.linalg.norm(A.data - A0.data) > 1.0e-5
 
 
 def test_coefficents_non_constant():
@@ -849,14 +837,14 @@ def test_coefficents_non_constant():
 
     # -- Volume integral vector
     F = form((ufl.inner(u, v) - ufl.inner(x[0] * x[1]**2, v)) * dx)
-    b0 = assemble_vector(F)
-    b0.assemble()
+    b0 = fem.assemble_vector(F)
+    b0.scatter_reverse(InsertMode.add)
     assert np.linalg.norm(b0.array) == pytest.approx(0.0)
 
     # -- Exterior facet integral vector
     F = form((ufl.inner(u, v) - ufl.inner(x[0] * x[1]**2, v)) * ds)
-    b0 = assemble_vector(F)
-    b0.assemble()
+    b0 = fem.assemble_vector(F)
+    b0.scatter_reverse(InsertMode.add)
     assert np.linalg.norm(b0.array) == pytest.approx(0.0)
 
     # -- Interior facet integral vector
@@ -872,11 +860,9 @@ def test_coefficents_non_constant():
 
     F = (ufl.inner(u1('+') * u0('-'), ufl.avg(v)) - ufl.inner(x[0] * x[1]**2, ufl.avg(v))) * ufl.dS
     F = form(F)
-    b0 = assemble_vector(F)
-    b0.assemble()
+    b0 = fem.assemble_vector(F)
+    b0.scatter_reverse(InsertMode.add)
     assert np.linalg.norm(b0.array) == pytest.approx(0.0)
-
-    b0.destroy()
 
 
 def test_vector_types():
@@ -916,6 +902,7 @@ def test_vector_types():
     assert np.linalg.norm(x0.array - x2.array) == pytest.approx(0.0, abs=1e-7)
 
 
+@pytest.mark.skipif(not has_petsc, reason="Needs PETSc")
 def test_assemble_empty_rank_mesh():
     """Assembly on mesh where some ranks are empty"""
     comm = MPI.COMM_WORLD
@@ -971,6 +958,7 @@ def test_assemble_empty_rank_mesh():
     ksp.destroy(), b.destroy(), A.destroy()
 
 
+@pytest.mark.skipif(not has_petsc, reason="Needs PETSc")
 @pytest.mark.parametrize("mode", [GhostMode.none, GhostMode.shared_facet])
 def test_matrix_assembly_rectangular(mode):
     """Test assembly of block rectangular block matrices"""

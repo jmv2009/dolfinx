@@ -4,6 +4,8 @@
 #
 # SPDX-License-Identifier:    LGPL-3.0-or-later
 
+from mpi4py import MPI
+
 import ctypes
 import ctypes.util
 
@@ -17,74 +19,66 @@ import ufl
 from basix.ufl import blocked_element
 from dolfinx.fem import (Constant, Expression, Function, FunctionSpace,
                          VectorFunctionSpace, create_sparsity_pattern, form)
-
-if not dolfinx.has_petsc:
-    pytest.skip(allow_module_level=True)
-
-from dolfinx.cpp.la.petsc import create_matrix
-from dolfinx.fem.petsc import load_petsc_lib
-
-
 from dolfinx.mesh import create_unit_square
 from ffcx.element_interface import QuadratureElement
-
-from mpi4py import MPI
-from petsc4py import PETSc
+from dolfinx import default_scalar_type
 
 numba = pytest.importorskip("numba")
-cffi_support = pytest.importorskip("numba.core.typing.cffi_utils")
-
-
 dolfinx.cpp.common.init_logging(["-v"])
 
-# Get PETSc int and scalar types
-if np.dtype(PETSc.ScalarType).kind == 'c':
-    complex = True
-else:
-    complex = False
+if dolfinx.has_petsc:
+    from dolfinx.cpp.la.petsc import create_matrix
+    from dolfinx.fem.petsc import load_petsc_lib
+    from petsc4py import PETSc
 
-scalar_size = np.dtype(PETSc.ScalarType).itemsize
-index_size = np.dtype(PETSc.IntType).itemsize
+    cffi_support = pytest.importorskip("numba.core.typing.cffi_utils")
 
-if index_size == 8:
-    c_int_t = "int64_t"
-    ctypes_index: np.typing.DTypeLike = ctypes.c_int64
-elif index_size == 4:
-    c_int_t = "int32_t"
-    ctypes_index = ctypes.c_int32
-else:
-    raise RuntimeError("Cannot translate PETSc index size into a C type, index_size: {}.".format(index_size))
+    # Get PETSc int and scalar types
+    if np.dtype(PETSc.ScalarType).kind == 'c':
+        complex = True
+    else:
+        complex = False
 
-if complex and scalar_size == 16:
-    c_scalar_t = "double _Complex"
-    numba_scalar_t = numba.types.complex128
-elif complex and scalar_size == 8:
-    c_scalar_t = "float _Complex"
-    numba_scalar_t = numba.types.complex64
-elif not complex and scalar_size == 8:
-    c_scalar_t = "double"
-    numba_scalar_t = numba.types.float64
-elif not complex and scalar_size == 4:
-    c_scalar_t = "float"
-    numba_scalar_t = numba.types.float32
-else:
-    raise RuntimeError(
-        "Cannot translate PETSc scalar type to a C type, complex: {} size: {}.".format(complex, scalar_size))
+    scalar_size = np.dtype(PETSc.ScalarType).itemsize
+    index_size = np.dtype(PETSc.IntType).itemsize
 
+    if index_size == 8:
+        c_int_t = "int64_t"
+        ctypes_index: np.typing.DTypeLike = ctypes.c_int64
+    elif index_size == 4:
+        c_int_t = "int32_t"
+        ctypes_index = ctypes.c_int32
+    else:
+        raise RuntimeError("Cannot translate PETSc index size into a C type, index_size: {}.".format(index_size))
 
-# CFFI - register complex types
-ffi = cffi.FFI()
-cffi_support.register_type(ffi.typeof('double _Complex'), numba.types.complex128)
-cffi_support.register_type(ffi.typeof('float _Complex'), numba.types.complex64)
+    if complex and scalar_size == 16:
+        c_scalar_t = "double _Complex"
+        numba_scalar_t = numba.types.complex128
+    elif complex and scalar_size == 8:
+        c_scalar_t = "float _Complex"
+        numba_scalar_t = numba.types.complex64
+    elif not complex and scalar_size == 8:
+        c_scalar_t = "double"
+        numba_scalar_t = numba.types.float64
+    elif not complex and scalar_size == 4:
+        c_scalar_t = "float"
+        numba_scalar_t = numba.types.float32
+    else:
+        raise RuntimeError(
+            "Cannot translate PETSc scalar type to a C type, complex: {} size: {}.".format(complex, scalar_size))
 
-# Get MatSetValuesLocal from PETSc available via cffi in ABI mode
-ffi.cdef("""int MatSetValuesLocal(void* mat, {0} nrow, const {0}* irow,
-                                  {0} ncol, const {0}* icol, const {1}* y, int addv);
-""".format(c_int_t, c_scalar_t))
+    # CFFI - register complex types
+    ffi = cffi.FFI()
+    cffi_support.register_type(ffi.typeof('double _Complex'), numba.types.complex128)
+    cffi_support.register_type(ffi.typeof('float _Complex'), numba.types.complex64)
 
+    # Get MatSetValuesLocal from PETSc available via cffi in ABI mode
+    ffi.cdef("""int MatSetValuesLocal(void* mat, {0} nrow, const {0}* irow,
+    {0} ncol, const {0}* icol, const {1}* y, int addv);
+    """.format(c_int_t, c_scalar_t))
 
-petsc_lib_cffi = load_petsc_lib(ffi.dlopen)
-MatSetValues = petsc_lib_cffi.MatSetValuesLocal
+    petsc_lib_cffi = load_petsc_lib(ffi.dlopen)
+    MatSetValues = petsc_lib_cffi.MatSetValuesLocal
 
 
 def test_rank0():
@@ -135,6 +129,7 @@ def test_rank0():
     assert np.allclose(b2.x.array, b.x.array)
 
 
+@pytest.mark.skipif(not dolfinx.has_petsc, reason="Test uses PETSc")
 def test_rank1_hdiv():
     """Test rank-1 Expression, i.e. Expression containing Argument (TrialFunction)
     Test compiles linear interpolation operator RT_2 -> vector DG_2 and assembles it into
@@ -234,7 +229,7 @@ def test_simple_evaluation():
     expr = Function(P2)
     expr.interpolate(exact_expr)
 
-    ufl_grad_f = Constant(mesh, PETSc.ScalarType(3.0)) * ufl.grad(expr)
+    ufl_grad_f = Constant(mesh, default_scalar_type(3.0)) * ufl.grad(expr)
     points = np.array([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]])
     grad_f_expr = Expression(ufl_grad_f, points)
     assert grad_f_expr.X().shape[0] == points.shape[0]
@@ -302,8 +297,8 @@ def test_assembly_into_quadrature_function():
 
     T = Function(P2)
     T.interpolate(lambda x: x[0] + 2.0 * x[1])
-    A = Constant(mesh, PETSc.ScalarType(1.0))
-    B = Constant(mesh, PETSc.ScalarType(2.0))
+    A = Constant(mesh, default_scalar_type(1.0))
+    B = Constant(mesh, default_scalar_type(2.0))
 
     K = 1.0 / (A + B * T)
     e = B * K**2 * ufl.grad(T)
@@ -318,9 +313,10 @@ def test_assembly_into_quadrature_function():
 
     # Assemble into Function
     e_Q = Function(Q)
-    with e_Q.vector.localForm() as e_Q_local:
-        e_Q_local.setBlockSize(e_Q.function_space.dofmap.bs)
-        e_Q_local.setValuesBlocked(Q.dofmap.list.flatten(), e_eval, addv=PETSc.InsertMode.INSERT)
+    bs = Q.dofmap.bs
+    indices = [i * bs + j for i in Q.dofmap.list.flatten() for j in range(bs)]
+    arr = e_Q.x.array
+    arr[indices] += e_eval.flatten()
 
     def e_exact(x):
         T = x[0] + 2.0 * x[1]
@@ -348,13 +344,13 @@ def test_assembly_into_quadrature_function():
     Q_dofs_unrolled = Q_dofs_unrolled.reshape(-1, bs * quadrature_points.shape[0]).astype(Q_dofs.dtype)
     assert len(mesh.geometry.cmaps) == 1
 
-    with e_Q.vector.localForm() as local:
-        e_exact_eval = np.zeros_like(local.array)
-        for cell in range(num_cells):
-            xg = x_g[coord_dofs[cell], :tdim]
-            x = mesh.geometry.cmaps[0].push_forward(quadrature_points, xg)
-            e_exact_eval[Q_dofs_unrolled[cell]] = e_exact(x.T).T.flatten()
-        assert np.allclose(local.array, e_exact_eval)
+    local = e_Q.x.array
+    e_exact_eval = np.zeros_like(local)
+    for cell in range(num_cells):
+        xg = x_g[coord_dofs[cell], :tdim]
+        x = mesh.geometry.cmaps[0].push_forward(quadrature_points, xg)
+        e_exact_eval[Q_dofs_unrolled[cell]] = e_exact(x.T).T.flatten()
+    assert np.allclose(local, e_exact_eval)
 
 
 def test_expression_eval_cells_subset():
