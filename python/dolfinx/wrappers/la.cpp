@@ -100,6 +100,15 @@ void declare_objects(py::module& m, const std::string& type)
                &dolfinx::la::MatrixCSR<T>::set),
            py::arg("x"))
       .def("finalize", &dolfinx::la::MatrixCSR<T>::finalize)
+      .def_property_readonly(
+          "shape",
+          [](const dolfinx::la::MatrixCSR<T>& self)
+          {
+            std::size_t nrows = self.num_all_rows();
+            auto map_col = self.index_map(1);
+            std::size_t ncols = map_col->size_local() + map_col->num_ghosts();
+            return std::array<std::size_t, 2>({nrows, ncols});
+          })
       .def("to_dense",
            [](const dolfinx::la::MatrixCSR<T>& self)
            {
