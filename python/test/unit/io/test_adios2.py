@@ -92,10 +92,9 @@ def test_findes_single_function(tempdir, dim, simplex):
 @pytest.mark.skipif(not has_adios2, reason="Requires ADIOS2.")
 @pytest.mark.parametrize("dim", [2, 3])
 @pytest.mark.parametrize("simplex", [True, False])
-def test_fides_function_at_nodes(tempdir, dim, simplex):
+@pytest.mark.parametrize("dtype", [np.float64, np.complex128, np.float32, np.complex64])
+def test_fides_function_at_nodes(tempdir, dim, simplex, dtype):
     """Test saving P1 functions with Fides (with changing geometry)"""
-    from petsc4py import PETSc
-    dtype = PETSc.ScalarType
     mesh = generate_mesh(dim, simplex)
     v = Function(VectorFunctionSpace(mesh, ("Lagrange", 1)), dtype=dtype)
     v.name = "v"
