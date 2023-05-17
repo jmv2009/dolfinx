@@ -173,6 +173,7 @@ def test_basic_assembly_petsc_matrixcsr(mode):
     assert np.sqrt(A0.squared_norm()) == pytest.approx(A1.norm())
     A1.destroy()
 
+
 @pytest.mark.skipif(not has_petsc, reason="Needs PETSc")
 @pytest.mark.parametrize("mode", [GhostMode.none, GhostMode.shared_facet])
 def test_assembly_bcs(mode):
@@ -794,7 +795,6 @@ def test_pack_coefficients():
         b = fem.assemble_vector(_F, c[0], c[1])
         b.scatter_reverse(InsertMode.add)
         assert np.allclose(b.array, b0.array)
-
 
     # Change coefficients
     constants *= 5.0
