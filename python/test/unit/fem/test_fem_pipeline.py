@@ -4,11 +4,16 @@
 #
 # SPDX-License-Identifier:    LGPL-3.0-or-later
 
+import pytest
+import dolfinx
+
+if dolfinx.has_petsc is False:
+    pytest.skip(allow_module_level=True, reason="PETSc needed for solver")
+
 from pathlib import Path
 
 import basix
 import numpy as np
-import pytest
 import ufl
 from basix.ufl import element, mixed_element
 from dolfinx.fem import (Function, FunctionSpace, VectorFunctionSpace,

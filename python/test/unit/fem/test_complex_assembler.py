@@ -12,6 +12,7 @@ import ufl
 from basix.ufl import element
 import dolfinx
 from dolfinx import fem
+from dolfinx import default_scalar_type
 from dolfinx.fem import Function, FunctionSpace, form
 from dolfinx.la import InsertMode
 from dolfinx.mesh import create_unit_square
@@ -78,8 +79,7 @@ def test_complex_assembly(dtype):
 
 
 @pytest.mark.skipif(dolfinx.has_petsc is False, reason="Need PETSc for solver")
-@pytest.mark.skipif(not np.issubdtype(PETSc.ScalarType, np.complexfloating),
-                    reason="Only works in complex mode.")
+@pytest.mark.skipif(not np.issubdtype(default_scalar_type, np.complexfloating), reason="Only works in complex mode.")
 def test_complex_assembly_solve():
     """Solve a positive definite helmholtz problem and verify solution
     with the method of manufactured solutions"""

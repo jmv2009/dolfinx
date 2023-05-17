@@ -5,6 +5,12 @@
 # SPDX-License-Identifier:    LGPL-3.0-or-later
 """Tests for custom Python assemblers"""
 
+import pytest
+import dolfinx
+
+if dolfinx.has_petsc is False:
+    pytest.skip(allow_module_level=True, reason="PETSc required for these tests")
+
 import ctypes
 import ctypes.util
 import importlib
@@ -16,9 +22,7 @@ import time
 import cffi
 import numpy as np
 import numpy.typing
-import pytest
 
-import dolfinx
 import dolfinx.pkgconfig
 import ufl
 from dolfinx.fem import Function, FunctionSpace, form
