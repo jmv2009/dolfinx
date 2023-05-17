@@ -10,23 +10,24 @@ import numpy as np
 
 from dolfinx import has_petsc
 from dolfinx import cpp as _cpp
-from dolfinx.cpp.la import Norm, InsertMode
+from dolfinx.cpp.la import Norm, InsertMode, BlockMode
 
 if has_petsc:
     from dolfinx.cpp.la.petsc import create_vector as create_petsc_vector
-
 
 __all__ = ["orthonormalize", "is_orthonormal", "create_petsc_vector", "matrix_csr", "vector",
            "MatrixCSRMetaClass", "Norm", "InsertMode", "VectorMetaClass", ]
 
 
 class MatrixCSRMetaClass:
-    def __init__(self, sp):
+    def __init__(self, sp, bm):
         """A distributed sparse matrix that uses compressed sparse row storage.
 
         Args:
             sp: The sparsity pattern that defines the nonzero structure
             of the matrix the parallel distribution of the matrix
+            bm: The block mode (compact or expanded). Relevant only if
+            block size is greater than one.
 
         Note:
             Objects of this type should be created using
@@ -34,10 +35,10 @@ class MatrixCSRMetaClass:
             initialiser.
 
         """
-        super().__init__(sp)
+        super().__init__(sp, bm)
 
 
-def matrix_csr(sp, dtype=np.float64) -> MatrixCSRMetaClass:
+def matrix_csr(sp, block_mode=BlockMode.compact, dtype=np.float64) -> MatrixCSRMetaClass:
     """Create a distributed sparse matrix.
 
     The matrix uses compressed sparse row storage.
@@ -63,7 +64,7 @@ def matrix_csr(sp, dtype=np.float64) -> MatrixCSRMetaClass:
         raise NotImplementedError(f"Type {dtype} not supported.")
 
     matrixcls = type("MatrixCSR", (MatrixCSRMetaClass, ftype), {})
-    return matrixcls(sp)
+    return matrixcls(sp, block_mode)
 
 
 class VectorMetaClass:
