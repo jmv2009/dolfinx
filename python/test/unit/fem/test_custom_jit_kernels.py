@@ -13,14 +13,13 @@ import numpy as np
 import pytest
 
 import dolfinx
-from dolfinx import TimingType
+from dolfinx import TimingType, default_scalar_type
 from dolfinx import cpp as _cpp
 from dolfinx import fem, la, list_timings
 from dolfinx.fem import Function, FunctionSpace, IntegralType
 from dolfinx.mesh import create_unit_square
 
 from mpi4py import MPI
-from petsc4py import PETSc
 
 numba = pytest.importorskip("numba")
 
@@ -28,10 +27,13 @@ numba = pytest.importorskip("numba")
 # compiled modules
 sys.path.append(os.getcwd())
 
+dtype_to_form = {np.float32: _cpp.fem.Form_float32, np.float64: _cpp.fem.Form_float64,
+                 np.complex64: _cpp.fem.Form_complex64, np.complex128: _cpp.fem.Form_complex128}
+
 c_signature = numba.types.void(
-    numba.types.CPointer(numba.typeof(PETSc.ScalarType())),
-    numba.types.CPointer(numba.typeof(PETSc.ScalarType())),
-    numba.types.CPointer(numba.typeof(PETSc.ScalarType())),
+    numba.types.CPointer(numba.typeof(default_scalar_type())),
+    numba.types.CPointer(numba.typeof(default_scalar_type())),
+    numba.types.CPointer(numba.typeof(default_scalar_type())),
     numba.types.CPointer(numba.types.double),
     numba.types.CPointer(numba.types.int32),
     numba.types.CPointer(numba.types.int32))
@@ -39,7 +41,7 @@ c_signature = numba.types.void(
 
 @numba.cfunc(c_signature, nopython=True)
 def tabulate_tensor_A(A_, w_, c_, coords_, entity_local_index, cell_orientation):
-    A = numba.carray(A_, (3, 3), dtype=PETSc.ScalarType)
+    A = numba.carray(A_, (3, 3), dtype=default_scalar_type)
     coordinate_dofs = numba.carray(coords_, (3, 3), dtype=np.float64)
 
     # Ke=∫Ωe BTe Be dΩ
@@ -49,13 +51,13 @@ def tabulate_tensor_A(A_, w_, c_, coords_, entity_local_index, cell_orientation)
 
     # 2x Element area Ae
     Ae = abs((x0 - x1) * (y2 - y1) - (y0 - y1) * (x2 - x1))
-    B = np.array([y1 - y2, y2 - y0, y0 - y1, x2 - x1, x0 - x2, x1 - x0], dtype=PETSc.ScalarType).reshape(2, 3)
+    B = np.array([y1 - y2, y2 - y0, y0 - y1, x2 - x1, x0 - x2, x1 - x0], dtype=default_scalar_type).reshape(2, 3)
     A[:, :] = np.dot(B.T, B) / (2 * Ae)
 
 
 @numba.cfunc(c_signature, nopython=True)
 def tabulate_tensor_b(b_, w_, c_, coords_, local_index, orientation):
-    b = numba.carray(b_, (3), dtype=PETSc.ScalarType)
+    b = numba.carray(b_, (3), dtype=default_scalar_type)
     coordinate_dofs = numba.carray(coords_, (3, 3), dtype=np.float64)
     x0, y0 = coordinate_dofs[0, :2]
     x1, y1 = coordinate_dofs[1, :2]
@@ -66,24 +68,10 @@ def tabulate_tensor_b(b_, w_, c_, coords_, local_index, orientation):
     b[:] = Ae / 6.0
 
 
-@numba.cfunc(c_signature, nopython=True)
-def tabulate_tensor_b_coeff(b_, w_, c_, coords_, local_index, orientation):
-    b = numba.carray(b_, (3), dtype=PETSc.ScalarType)
-    w = numba.carray(w_, (1), dtype=PETSc.ScalarType)
-    coordinate_dofs = numba.carray(coords_, (3, 3), dtype=np.float64)
-    x0, y0 = coordinate_dofs[0, :2]
-    x1, y1 = coordinate_dofs[1, :2]
-    x2, y2 = coordinate_dofs[2, :2]
-
-    # 2x Element area Ae
-    Ae = abs((x0 - x1) * (y2 - y1) - (y0 - y1) * (x2 - x1))
-    b[:] = w[0] * Ae / 6.0
-
-
 def test_numba_assembly():
     mesh = create_unit_square(MPI.COMM_WORLD, 13, 13)
     V = FunctionSpace(mesh, ("Lagrange", 1))
-    Form = _cpp.fem.Form_float64 if PETSc.ScalarType == np.float64 else _cpp.fem.Form_complex128
+    Form = dtype_to_form[default_scalar_type]
 
     cells = range(mesh.topology.index_map(mesh.topology.dim).size_local)
     integrals = {IntegralType.cell: [(-1, tabulate_tensor_A.address, cells),
@@ -94,35 +82,59 @@ def test_numba_assembly():
     integrals = {IntegralType.cell: [(-1, tabulate_tensor_b.address, cells)]}
     L = Form([V._cpp_object], integrals, [], [], False)
 
-    A = dolfinx.fem.petsc.assemble_matrix(a)
-    A.assemble()
-    b = dolfinx.fem.petsc.assemble_vector(L)
-    b.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
+    A = dolfinx.fem.assemble_matrix(a)
+    A.finalize()
+    b = dolfinx.fem.assemble_vector(L)
+    b.scatter_reverse(la.InsertMode.add)
+#    b.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
 
-    Anorm = A.norm(PETSc.NormType.FROBENIUS)
-    bnorm = b.norm(PETSc.NormType.N2)
-    assert np.isclose(Anorm, 56.124860801609124)
-    assert np.isclose(bnorm, 0.0739710713711999)
+    Anorm = A.squared_norm()
+    bnorm = b.squared_norm()
+    assert np.isclose(np.sqrt(Anorm), 56.124860801609124)
+    assert np.isclose(np.sqrt(bnorm), 0.0739710713711999)
 
     list_timings(MPI.COMM_WORLD, [TimingType.wall])
 
 
-def test_coefficient():
+@pytest.mark.parametrize("dtype", [np.float64, np.complex128])
+def test_coefficient(dtype):
+
+    c_signature = numba.types.void(
+        numba.types.CPointer(numba.typeof(dtype())),
+        numba.types.CPointer(numba.typeof(dtype())),
+        numba.types.CPointer(numba.typeof(dtype())),
+        numba.types.CPointer(numba.types.double),
+        numba.types.CPointer(numba.types.int32),
+        numba.types.CPointer(numba.types.int32))
+
+    @numba.cfunc(c_signature, nopython=True)
+    def tabulate_tensor_b_coeff(b_, w_, c_, coords_, local_index, orientation):
+        b = numba.carray(b_, (3), dtype=dtype)
+        w = numba.carray(w_, (1), dtype=dtype)
+        coordinate_dofs = numba.carray(coords_, (3, 3), dtype=np.float64)
+        x0, y0 = coordinate_dofs[0, :2]
+        x1, y1 = coordinate_dofs[1, :2]
+        x2, y2 = coordinate_dofs[2, :2]
+
+        # 2x Element area Ae
+        Ae = abs((x0 - x1) * (y2 - y1) - (y0 - y1) * (x2 - x1))
+        b[:] = w[0] * Ae / 6.0
+
     mesh = create_unit_square(MPI.COMM_WORLD, 13, 13)
     V = FunctionSpace(mesh, ("Lagrange", 1))
     DG0 = FunctionSpace(mesh, ("DG", 0))
-    vals = Function(DG0)
-    vals.vector.set(2.0)
+    vals = Function(DG0, dtype=dtype)
+    vals.x.set(2.0)
 
     tdim = mesh.topology.dim
-    num_cells = mesh.topology.index_map(tdim).size_local + mesh.topology.index_map(tdim).num_ghosts
+    num_cells = mesh.topology.index_map(tdim).size_local
     integrals = {IntegralType.cell: [(1, tabulate_tensor_b_coeff.address, np.arange(num_cells, dtype=np.intc))]}
-    Form = _cpp.fem.Form_float64 if PETSc.ScalarType == np.float64 else _cpp.fem.Form_complex128
+    Form = dtype_to_form[dtype]
     L = Form([V._cpp_object], integrals, [vals._cpp_object], [], False)
 
-    b = dolfinx.fem.petsc.assemble_vector(L)
-    b.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
-    bnorm = b.norm(PETSc.NormType.N2)
+    b = dolfinx.fem.assemble_vector(L)
+    b.scatter_reverse(la.InsertMode.add)
+    bnorm = b.norm()
     assert np.isclose(bnorm, 2.0 * 0.0739710713711999)
 
 

@@ -83,8 +83,8 @@ def test_assemble_derivatives():
     v = ufl.TestFunction(Q)
     du = ufl.TrialFunction(Q)
     b = Function(Q)
-    c1 = Constant(mesh, np.array([[1.0, 0.0], [3.0, 4.0]], PETSc.ScalarType))
-    c2 = Constant(mesh, PETSc.ScalarType(2.0))
+    c1 = Constant(mesh, np.array([[1.0, 0.0], [3.0, 4.0]], default_scalar_type))
+    c2 = Constant(mesh, default_scalar_type(2.0))
 
     b.x.array[:] = 2.0
 
@@ -716,7 +716,7 @@ def test_basic_assembly_constant(mode):
     V = FunctionSpace(mesh, ("Lagrange", 1))
     u, v = ufl.TrialFunction(V), ufl.TestFunction(V)
 
-    c = Constant(mesh, np.array([[1.0, 2.0], [5.0, 3.0]], PETSc.ScalarType))
+    c = Constant(mesh, np.array([[1.0, 2.0], [5.0, 3.0]], default_scalar_type))
 
     a = inner(c[1, 0] * u, v) * dx + inner(c[1, 0] * u, v) * ds
     L = inner(c[1, 0], v) * dx + inner(c[1, 0], v) * ds

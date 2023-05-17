@@ -1,6 +1,10 @@
 import numpy as np
 import pytest
 
+import dolfinx
+if not dolfinx.has_petsc:
+    pytest.skip(allow_module_level=True)
+
 import basix
 import ufl
 import basix.ufl
