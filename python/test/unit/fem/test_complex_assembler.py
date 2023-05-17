@@ -10,19 +10,22 @@ import pytest
 
 import ufl
 from basix.ufl import element
+import dolfinx
+from dolfinx import fem
 from dolfinx.fem import Function, FunctionSpace, form
-from dolfinx.fem.petsc import assemble_matrix, assemble_vector
+from dolfinx.la import InsertMode
 from dolfinx.mesh import create_unit_square
 from ufl import dx, grad, inner
 
 from mpi4py import MPI
-from petsc4py import PETSc
 
-pytestmark = pytest.mark.skipif(
-    not np.issubdtype(PETSc.ScalarType, np.complexfloating), reason="Only works in complex mode.")
+if dolfinx.has_petsc:
+    from petsc4py import PETSc
+    from dolfinx.fem.petsc import assemble_matrix, assemble_vector
 
 
-def test_complex_assembly():
+@pytest.mark.parametrize("dtype", [np.complex64, np.complex128])
+def test_complex_assembly(dtype):
     """Test assembly of complex matrices and vectors"""
 
     mesh = create_unit_square(MPI.COMM_WORLD, 10, 10)
@@ -33,46 +36,50 @@ def test_complex_assembly():
     g = -2 + 3.0j
     j = 1.0j
 
-    a_real = form(inner(u, v) * dx)
-    L1 = form(inner(g, v) * dx)
+    a_real = form(inner(u, v) * dx, dtype=dtype)
+    L1 = form(inner(g, v) * dx, dtype=dtype)
 
-    b = assemble_vector(L1)
-    b.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
-    bnorm = b.norm(PETSc.NormType.N1)
+    b = fem.assemble_vector(L1)
+    b.scatter_reverse(InsertMode.add)
+    bnorm = abs(b.array.sum())
     b_norm_ref = abs(-2 + 3.0j)
+    print(bnorm, b_norm_ref)
     assert bnorm == pytest.approx(b_norm_ref)
 
-    A = assemble_matrix(a_real)
-    A.assemble()
-    A0_norm = A.norm(PETSc.NormType.FROBENIUS)
+    A = fem.assemble_matrix(a_real)
+    A.finalize()
+    A0_norm = A.squared_norm()
 
     x = ufl.SpatialCoordinate(mesh)
 
-    a_imag = form(j * inner(u, v) * dx)
+    a_imag = form(j * inner(u, v) * dx, dtype=dtype)
     f = 1j * ufl.sin(2 * np.pi * x[0])
-    L0 = form(inner(f, v) * dx)
-    A = assemble_matrix(a_imag)
-    A.assemble()
-    A1_norm = A.norm(PETSc.NormType.FROBENIUS)
+    L0 = form(inner(f, v) * dx, dtype=dtype)
+    A = fem.assemble_matrix(a_imag)
+    A.finalize()
+    A1_norm = A.squared_norm()
     assert A0_norm == pytest.approx(A1_norm)
 
-    b = assemble_vector(L0)
-    b.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
-    b1_norm = b.norm(PETSc.NormType.N2)
+    b = fem.assemble_vector(L0)
+    b.scatter_reverse(InsertMode.add)
+    b1_norm = b.norm()
 
-    a_complex = form((1 + j) * inner(u, v) * dx)
+    a_complex = form((1 + j) * inner(u, v) * dx, dtype=dtype)
     f = ufl.sin(2 * np.pi * x[0])
-    L2 = form(inner(f, v) * dx)
-    A = assemble_matrix(a_complex)
-    A.assemble()
-    A2_norm = A.norm(PETSc.NormType.FROBENIUS)
-    assert A1_norm == pytest.approx(A2_norm / np.sqrt(2))
-    b = assemble_vector(L2)
-    b.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
-    b2_norm = b.norm(PETSc.NormType.N2)
+    L2 = form(inner(f, v) * dx, dtype=dtype)
+    A = fem.assemble_matrix(a_complex)
+    A.finalize()
+    A2_norm = A.squared_norm()
+    assert A1_norm == pytest.approx(A2_norm / 2.0)
+    b = fem.assemble_vector(L2)
+    b.scatter_reverse(InsertMode.add)
+    b2_norm = b.norm()
     assert b2_norm == pytest.approx(b1_norm)
 
 
+@pytest.mark.skipif(dolfinx.has_petsc is False, reason="Need PETSc for solver")
+@pytest.mark.skipif(not np.issubdtype(PETSc.ScalarType, np.complexfloating),
+                    reason="Only works in complex mode.")
 def test_complex_assembly_solve():
     """Solve a positive definite helmholtz problem and verify solution
     with the method of manufactured solutions"""
