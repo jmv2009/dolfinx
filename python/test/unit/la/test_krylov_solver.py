@@ -10,7 +10,7 @@ from contextlib import ExitStack
 import numpy as np
 import pytest
 import dolfinx
-if dolfinx.has_petsc == False:
+if dolfinx.has_petsc is False:
     pytest.skip(allow_module_level=True)
 
 import ufl
