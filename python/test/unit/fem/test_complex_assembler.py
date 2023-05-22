@@ -42,9 +42,9 @@ def test_complex_assembly(dtype):
 
     b = fem.assemble_vector(L1)
     b.scatter_reverse(InsertMode.add)
-    bnorm = abs(b.array.sum())
+    n_loc = b.index_map.size_local
+    bnorm = mesh.comm.allreduce(abs(b.array[:n_loc].sum()), MPI.SUM)
     b_norm_ref = abs(-2 + 3.0j)
-    print(bnorm, b_norm_ref)
     assert bnorm == pytest.approx(b_norm_ref)
 
     A = fem.assemble_matrix(a_real)
