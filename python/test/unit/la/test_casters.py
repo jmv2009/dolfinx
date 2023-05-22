@@ -11,8 +11,10 @@ import pathlib
 import cppimport
 import numpy as np
 import pytest
-
 import dolfinx
+if dolfinx.has_petsc == False:
+    pytest.skip(allow_module_level=True)
+
 import dolfinx.pkgconfig
 from dolfinx.jit import mpi_jit_decorator
 from dolfinx.wrappers import get_include_path as pybind_inc

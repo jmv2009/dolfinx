@@ -9,6 +9,9 @@ from contextlib import ExitStack
 
 import numpy as np
 import pytest
+import dolfinx
+if dolfinx.has_petsc == False:
+    pytest.skip(allow_module_level=True)
 
 import ufl
 from dolfinx import la
