@@ -107,9 +107,9 @@ jobs:
         run: |
           export PARMETIS_ROOT=$PETSC_DIR
           unset PETSC_DIR
-	  echo $PARMETIS_ROOT
-	  echo $PETSC_ARCH
-	  ls $PARMETIS_ROOT
+          echo $PARMETIS_ROOT
+          echo $PETSC_ARCH
+          ls $PARMETIS_ROOT
           cmake -G Ninja -DCMAKE_BUILD_TYPE=Developer -B build -S cpp/
 
       - name: Build and install C++ library
