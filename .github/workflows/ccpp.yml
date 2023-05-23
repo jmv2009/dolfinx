@@ -105,10 +105,9 @@ jobs:
 
       - name: Configure C++
         run: |
-          export PARMETIS_ROOT=$PETSC_DIR
+          export PARMETIS_ROOT=$PETSC_DIR/$PETSC_ARCH
           unset PETSC_DIR
           echo $PARMETIS_ROOT
-          echo $PETSC_ARCH
           ls $PARMETIS_ROOT
           cmake -G Ninja -DCMAKE_BUILD_TYPE=Developer -B build -S cpp/
 
