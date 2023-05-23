@@ -105,7 +105,7 @@ jobs:
 
       - name: Configure C++
         run: |
-          export SCOTCH_DIR=$PETSC_DIR/$PETSC_ARCH
+          export SCOTCH_ROOT=$PETSC_DIR/$PETSC_ARCH
           unset PETSC_DIR
           cmake -G Ninja -DCMAKE_BUILD_TYPE=Developer -B build -S cpp/
 
