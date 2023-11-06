@@ -5,81 +5,74 @@
 # SPDX-License-Identifier:    LGPL-3.0-or-later
 """Unit tests for assembly in complex mode"""
 
+from mpi4py import MPI
+from petsc4py import PETSc
+
 import numpy as np
 import pytest
 
 import ufl
 from basix.ufl import element
-import dolfinx
-from dolfinx import fem
-from dolfinx import default_scalar_type
-from dolfinx.fem import Function, FunctionSpace, form
-from dolfinx.la import InsertMode
+from dolfinx.fem import Function, form, functionspace
+from dolfinx.fem.petsc import assemble_matrix, assemble_vector
 from dolfinx.mesh import create_unit_square
 from ufl import dx, grad, inner
 
-from mpi4py import MPI
-
-if dolfinx.has_petsc:
-    from petsc4py import PETSc
-    from dolfinx.fem.petsc import assemble_matrix, assemble_vector
+pytestmark = pytest.mark.skipif(
+    not np.issubdtype(PETSc.ScalarType, np.complexfloating), reason="Only works in complex mode.")  # type: ignore
 
 
-@pytest.mark.parametrize("dtype", [np.complex64, np.complex128])
-def test_complex_assembly(dtype):
+def test_complex_assembly():
     """Test assembly of complex matrices and vectors"""
 
     mesh = create_unit_square(MPI.COMM_WORLD, 10, 10)
     P2 = element("Lagrange", mesh.basix_cell(), 2)
-    V = FunctionSpace(mesh, P2)
+    V = functionspace(mesh, P2)
     u = ufl.TrialFunction(V)
     v = ufl.TestFunction(V)
     g = -2 + 3.0j
     j = 1.0j
 
-    a_real = form(inner(u, v) * dx, dtype=dtype)
-    L1 = form(inner(g, v) * dx, dtype=dtype)
+    a_real = form(inner(u, v) * dx)
+    L1 = form(inner(g, v) * dx)
 
-    b = fem.assemble_vector(L1)
-    b.scatter_reverse(InsertMode.add)
-    n_loc = b.index_map.size_local
-    bnorm = mesh.comm.allreduce(abs(b.array[:n_loc].sum()), MPI.SUM)
+    b = assemble_vector(L1)
+    b.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
+    bnorm = b.norm(PETSc.NormType.N1)
     b_norm_ref = abs(-2 + 3.0j)
-    assert bnorm == pytest.approx(b_norm_ref)
+    assert bnorm == pytest.approx(b_norm_ref, rel=1e-5)
 
-    A = fem.assemble_matrix(a_real)
-    A.finalize()
-    A0_norm = A.squared_norm()
+    A = assemble_matrix(a_real)
+    A.assemble()
+    A0_norm = A.norm(PETSc.NormType.FROBENIUS)
 
     x = ufl.SpatialCoordinate(mesh)
 
-    a_imag = form(j * inner(u, v) * dx, dtype=dtype)
+    a_imag = form(j * inner(u, v) * dx)
     f = 1j * ufl.sin(2 * np.pi * x[0])
-    L0 = form(inner(f, v) * dx, dtype=dtype)
-    A = fem.assemble_matrix(a_imag)
-    A.finalize()
-    A1_norm = A.squared_norm()
+    L0 = form(inner(f, v) * dx)
+    A = assemble_matrix(a_imag)
+    A.assemble()
+    A1_norm = A.norm(PETSc.NormType.FROBENIUS)
     assert A0_norm == pytest.approx(A1_norm)
 
-    b = fem.assemble_vector(L0)
-    b.scatter_reverse(InsertMode.add)
-    b1_norm = b.norm()
+    b = assemble_vector(L0)
+    b.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
+    b1_norm = b.norm(PETSc.NormType.N2)
 
-    a_complex = form((1 + j) * inner(u, v) * dx, dtype=dtype)
+    a_complex = form((1 + j) * inner(u, v) * dx)
     f = ufl.sin(2 * np.pi * x[0])
-    L2 = form(inner(f, v) * dx, dtype=dtype)
-    A = fem.assemble_matrix(a_complex)
-    A.finalize()
-    A2_norm = A.squared_norm()
-    assert A1_norm == pytest.approx(A2_norm / 2.0)
-    b = fem.assemble_vector(L2)
-    b.scatter_reverse(InsertMode.add)
-    b2_norm = b.norm()
+    L2 = form(inner(f, v) * dx)
+    A = assemble_matrix(a_complex)
+    A.assemble()
+    A2_norm = A.norm(PETSc.NormType.FROBENIUS)
+    assert A1_norm == pytest.approx(A2_norm / np.sqrt(2))
+    b = assemble_vector(L2)
+    b.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
+    b2_norm = b.norm(PETSc.NormType.N2)
     assert b2_norm == pytest.approx(b1_norm)
 
 
-@pytest.mark.skipif(dolfinx.has_petsc is False, reason="Need PETSc for solver")
-@pytest.mark.skipif(not np.issubdtype(default_scalar_type, np.complexfloating), reason="Only works in complex mode.")
 def test_complex_assembly_solve():
     """Solve a positive definite helmholtz problem and verify solution
     with the method of manufactured solutions"""
@@ -87,7 +80,7 @@ def test_complex_assembly_solve():
     degree = 3
     mesh = create_unit_square(MPI.COMM_WORLD, 20, 20)
     P = element("Lagrange", mesh.basix_cell(), degree)
-    V = FunctionSpace(mesh, P)
+    V = functionspace(mesh, P)
 
     x = ufl.SpatialCoordinate(mesh)
 
@@ -109,11 +102,6 @@ def test_complex_assembly_solve():
 
     # Create solver
     solver = PETSc.KSP().create(mesh.comm)
-    solver.setOptionsPrefix("test_lu_")
-    opts = PETSc.Options("test_lu_")
-    opts["ksp_type"] = "preonly"
-    opts["pc_type"] = "lu"
-    solver.setFromOptions()
     x = A.createVecRight()
     solver.setOperators(A)
     solver.solve(b, x)

@@ -9,17 +9,18 @@
 import os
 import sys
 
+from mpi4py import MPI
+
 import numpy as np
 import pytest
 
 import dolfinx
-from dolfinx import TimingType, default_scalar_type
+from dolfinx import TimingType
 from dolfinx import cpp as _cpp
-from dolfinx import fem, la, list_timings
-from dolfinx.fem import Function, FunctionSpace, IntegralType
+from dolfinx import (default_real_type, default_scalar_type, fem, la,
+                     list_timings)
+from dolfinx.fem import Form, Function, IntegralType, functionspace
 from dolfinx.mesh import create_unit_square
-
-from mpi4py import MPI
 
 numba = pytest.importorskip("numba")
 
@@ -27,14 +28,11 @@ numba = pytest.importorskip("numba")
 # compiled modules
 sys.path.append(os.getcwd())
 
-dtype_to_form = {np.float32: _cpp.fem.Form_float32, np.float64: _cpp.fem.Form_float64,
-                 np.complex64: _cpp.fem.Form_complex64, np.complex128: _cpp.fem.Form_complex128}
-
 c_signature = numba.types.void(
     numba.types.CPointer(numba.typeof(default_scalar_type())),
     numba.types.CPointer(numba.typeof(default_scalar_type())),
     numba.types.CPointer(numba.typeof(default_scalar_type())),
-    numba.types.CPointer(numba.types.double),
+    numba.types.CPointer(numba.typeof(default_real_type())),
     numba.types.CPointer(numba.types.int32),
     numba.types.CPointer(numba.types.int32))
 
@@ -42,7 +40,7 @@ c_signature = numba.types.void(
 @numba.cfunc(c_signature, nopython=True)
 def tabulate_tensor_A(A_, w_, c_, coords_, entity_local_index, cell_orientation):
     A = numba.carray(A_, (3, 3), dtype=default_scalar_type)
-    coordinate_dofs = numba.carray(coords_, (3, 3), dtype=np.float64)
+    coordinate_dofs = numba.carray(coords_, (3, 3), dtype=dolfinx.default_real_type)
 
     # Ke=∫Ωe BTe Be dΩ
     x0, y0 = coordinate_dofs[0, :2]
@@ -58,7 +56,7 @@ def tabulate_tensor_A(A_, w_, c_, coords_, entity_local_index, cell_orientation)
 @numba.cfunc(c_signature, nopython=True)
 def tabulate_tensor_b(b_, w_, c_, coords_, local_index, orientation):
     b = numba.carray(b_, (3), dtype=default_scalar_type)
-    coordinate_dofs = numba.carray(coords_, (3, 3), dtype=np.float64)
+    coordinate_dofs = numba.carray(coords_, (3, 3), dtype=dolfinx.default_real_type)
     x0, y0 = coordinate_dofs[0, :2]
     x1, y1 = coordinate_dofs[1, :2]
     x2, y2 = coordinate_dofs[2, :2]
@@ -68,69 +66,78 @@ def tabulate_tensor_b(b_, w_, c_, coords_, local_index, orientation):
     b[:] = Ae / 6.0
 
 
-def test_numba_assembly():
-    mesh = create_unit_square(MPI.COMM_WORLD, 13, 13)
-    V = FunctionSpace(mesh, ("Lagrange", 1))
-    Form = dtype_to_form[default_scalar_type]
+@numba.cfunc(c_signature, nopython=True)
+def tabulate_tensor_b_coeff(b_, w_, c_, coords_, local_index, orientation):
+    b = numba.carray(b_, (3), dtype=default_scalar_type)
+    w = numba.carray(w_, (1), dtype=default_scalar_type)
+    coordinate_dofs = numba.carray(coords_, (3, 3), dtype=default_real_type)
+    x0, y0 = coordinate_dofs[0, :2]
+    x1, y1 = coordinate_dofs[1, :2]
+    x2, y2 = coordinate_dofs[2, :2]
 
-    cells = range(mesh.topology.index_map(mesh.topology.dim).size_local)
+    # 2x Element area Ae
+    Ae = abs((x0 - x1) * (y2 - y1) - (y0 - y1) * (x2 - x1))
+    b[:] = w[0] * Ae / 6.0
+
+
+def test_numba_assembly():
+    if default_scalar_type == np.float32:
+        formtype = _cpp.fem.Form_float32
+    elif default_scalar_type == np.float64:
+        formtype = _cpp.fem.Form_float64
+    elif default_scalar_type == np.complex64:
+        formtype = _cpp.fem.Form_complex64
+    elif default_scalar_type == np.complex128:
+        formtype = _cpp.fem.Form_complex128
+    else:
+        raise RuntimeError("Unknown scalar type")
+
+    mesh = create_unit_square(MPI.COMM_WORLD, 13, 13)
+    V = functionspace(mesh, ("Lagrange", 1))
+    cells = np.arange(mesh.topology.index_map(mesh.topology.dim).size_local, dtype=np.int32)
     integrals = {IntegralType.cell: [(-1, tabulate_tensor_A.address, cells),
-                                     (12, tabulate_tensor_A.address, range(0)),
-                                     (2, tabulate_tensor_A.address, range(0))]}
-    a = Form([V._cpp_object, V._cpp_object], integrals, [], [], False)
+                                     (12, tabulate_tensor_A.address, np.arange(0)),
+                                     (2, tabulate_tensor_A.address, np.arange(0))]}
+    a = Form(formtype([V._cpp_object, V._cpp_object], integrals, [], [], False, None))
 
     integrals = {IntegralType.cell: [(-1, tabulate_tensor_b.address, cells)]}
-    L = Form([V._cpp_object], integrals, [], [], False)
+    L = Form(formtype([V._cpp_object], integrals, [], [], False, None))
 
     A = dolfinx.fem.assemble_matrix(a)
-    A.finalize()
+    A.scatter_reverse()
     b = dolfinx.fem.assemble_vector(L)
-    b.scatter_reverse(la.InsertMode.add)
-#    b.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
+    b.scatter_reverse(dolfinx.la.InsertMode.add)
 
-    Anorm = A.squared_norm()
-    bnorm = b.squared_norm()
-    assert np.isclose(np.sqrt(Anorm), 56.124860801609124)
-    assert np.isclose(np.sqrt(bnorm), 0.0739710713711999)
+    Anorm = np.sqrt(A.squared_norm())
+    bnorm = b.norm()
+    assert np.isclose(Anorm, 56.124860801609124)
+    assert np.isclose(bnorm, 0.0739710713711999)
 
     list_timings(MPI.COMM_WORLD, [TimingType.wall])
 
 
-@pytest.mark.parametrize("dtype", [np.float64, np.complex128])
-def test_coefficient(dtype):
-
-    c_signature = numba.types.void(
-        numba.types.CPointer(numba.typeof(dtype())),
-        numba.types.CPointer(numba.typeof(dtype())),
-        numba.types.CPointer(numba.typeof(dtype())),
-        numba.types.CPointer(numba.types.double),
-        numba.types.CPointer(numba.types.int32),
-        numba.types.CPointer(numba.types.int32))
-
-    @numba.cfunc(c_signature, nopython=True)
-    def tabulate_tensor_b_coeff(b_, w_, c_, coords_, local_index, orientation):
-        b = numba.carray(b_, (3), dtype=dtype)
-        w = numba.carray(w_, (1), dtype=dtype)
-        coordinate_dofs = numba.carray(coords_, (3, 3), dtype=np.float64)
-        x0, y0 = coordinate_dofs[0, :2]
-        x1, y1 = coordinate_dofs[1, :2]
-        x2, y2 = coordinate_dofs[2, :2]
-
-        # 2x Element area Ae
-        Ae = abs((x0 - x1) * (y2 - y1) - (y0 - y1) * (x2 - x1))
-        b[:] = w[0] * Ae / 6.0
+def test_coefficient():
+    if default_scalar_type == np.float32:
+        formtype = _cpp.fem.Form_float32
+    elif default_scalar_type == np.float64:
+        formtype = _cpp.fem.Form_float64
+    elif default_scalar_type == np.complex64:
+        formtype = _cpp.fem.Form_complex64
+    elif default_scalar_type == np.complex128:
+        formtype = _cpp.fem.Form_complex128
+    else:
+        raise RuntimeError("Unknown scalar type")
 
     mesh = create_unit_square(MPI.COMM_WORLD, 13, 13)
-    V = FunctionSpace(mesh, ("Lagrange", 1))
-    DG0 = FunctionSpace(mesh, ("DG", 0))
-    vals = Function(DG0, dtype=dtype)
-    vals.x.set(2.0)
+    V = functionspace(mesh, ("Lagrange", 1))
+    DG0 = functionspace(mesh, ("DG", 0))
+    vals = Function(DG0)
+    vals.vector.set(2.0)
 
     tdim = mesh.topology.dim
-    num_cells = mesh.topology.index_map(tdim).size_local
+    num_cells = mesh.topology.index_map(tdim).size_local + mesh.topology.index_map(tdim).num_ghosts
     integrals = {IntegralType.cell: [(1, tabulate_tensor_b_coeff.address, np.arange(num_cells, dtype=np.intc))]}
-    Form = dtype_to_form[dtype]
-    L = Form([V._cpp_object], integrals, [vals._cpp_object], [], False)
+    L = Form(formtype([V._cpp_object], integrals, [vals._cpp_object], [], False, None))
 
     b = dolfinx.fem.assemble_vector(L)
     b.scatter_reverse(la.InsertMode.add)
@@ -140,9 +147,8 @@ def test_coefficient(dtype):
 
 @pytest.mark.skip_in_parallel
 def test_cffi_assembly():
-    mesh = create_unit_square(MPI.COMM_WORLD, 13, 13)
-    V = FunctionSpace(mesh, ("Lagrange", 1))
-
+    mesh = create_unit_square(MPI.COMM_WORLD, 13, 13, dtype=np.float64)
+    V = functionspace(mesh, ("Lagrange", 1))
     if mesh.comm.rank == 0:
         from cffi import FFI
         ffibuilder = FFI()
@@ -241,18 +247,18 @@ def test_cffi_assembly():
     mesh.comm.Barrier()
     from _cffi_kernelA import ffi, lib
 
-    cells = range(mesh.topology.index_map(mesh.topology.dim).size_local)
+    cells = np.arange(mesh.topology.index_map(mesh.topology.dim).size_local, dtype=np.int32)
 
     ptrA = ffi.cast("intptr_t", ffi.addressof(lib, "tabulate_tensor_poissonA"))
     integrals = {IntegralType.cell: [(-1, ptrA, cells)]}
-    a = _cpp.fem.Form_float64([V._cpp_object, V._cpp_object], integrals, [], [], False)
+    a = Form(_cpp.fem.Form_float64([V._cpp_object, V._cpp_object], integrals, [], [], False, None))
 
     ptrL = ffi.cast("intptr_t", ffi.addressof(lib, "tabulate_tensor_poissonL"))
     integrals = {IntegralType.cell: [(-1, ptrL, cells)]}
-    L = _cpp.fem.Form_float64([V._cpp_object], integrals, [], [], False)
+    L = Form(_cpp.fem.Form_float64([V._cpp_object], integrals, [], [], False, None))
 
     A = fem.assemble_matrix(a)
-    A.finalize()
+    A.scatter_reverse()
     assert np.isclose(np.sqrt(A.squared_norm()), 56.124860801609124)
 
     b = fem.assemble_vector(L)

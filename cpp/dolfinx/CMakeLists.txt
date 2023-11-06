@@ -93,15 +93,7 @@ target_link_libraries(dolfinx PUBLIC Boost::timer)
 target_link_libraries(dolfinx PUBLIC MPI::MPI_CXX)
 
 # HDF5
-if(TARGET hdf5::hdf5)
-  target_link_libraries(dolfinx PUBLIC hdf5::hdf5)
-else()
-  # This is the old-style CMake (3.18 and earlier), remove when no longer
-  # supporting older CMake
-  target_compile_definitions(dolfinx PUBLIC ${HDF5_DEFINITIONS})
-  target_link_libraries(dolfinx PUBLIC ${HDF5_C_LIBRARIES})
-  target_include_directories(dolfinx SYSTEM PUBLIC ${HDF5_INCLUDE_DIRS})
-endif()
+target_link_libraries(dolfinx PUBLIC hdf5::hdf5)
 
 # ------------------------------------------------------------------------------
 # Optional packages

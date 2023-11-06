@@ -3,14 +3,14 @@
 # This file is part of DOLFINx (https://www.fenicsproject.org)
 #
 # SPDX-License-Identifier:    LGPL-3.0-or-later
-"""General tools for timing and configuration"""
+"""General tools for timing and configuration."""
 
 import functools
 import typing
 
 from dolfinx import cpp as _cpp
 from dolfinx.cpp.common import (IndexMap, git_commit_hash, has_adios2,  # noqa
-                                has_debug, has_kahip, has_parmetis, has_petsc)
+                                has_debug, has_kahip, has_parmetis)
 
 __all__ = ["IndexMap", "Timer", "timed"]
 

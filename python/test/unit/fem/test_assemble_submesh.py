@@ -6,23 +6,20 @@
 
 # TODO Test replacing mesh with submesh for existing assembler tests
 
+from mpi4py import MPI
+
 import numpy as np
 import pytest
 
 import ufl
-from dolfinx import fem
-from dolfinx.la import InsertMode
-from dolfinx.fem import assemble_vector, assemble_matrix, apply_lifting, set_bc
+from dolfinx import default_scalar_type, fem, la
 from dolfinx.mesh import (GhostMode, create_box, create_rectangle,
                           create_submesh, create_unit_cube, create_unit_square,
                           locate_entities, locate_entities_boundary)
 
-from mpi4py import MPI
-from dolfinx import default_scalar_type
-
 
 def assemble(mesh, space, k):
-    V = fem.FunctionSpace(mesh, (space, k))
+    V = fem.functionspace(mesh, (space, k))
     u, v = ufl.TrialFunction(V), ufl.TestFunction(V)
     dx = ufl.Measure("dx", domain=mesh)
     ds = ufl.Measure("ds", domain=mesh)
@@ -40,17 +37,17 @@ def assemble(mesh, space, k):
 
     bc = fem.dirichletbc(bc_func, dofs)
 
-    A = assemble_matrix(a, bcs=[bc])
-    A.finalize()
+    A = fem.assemble_matrix(a, bcs=[bc])
+    A.scatter_reverse()
 
     # TODO Test assembly with fem.Function
     x = ufl.SpatialCoordinate(mesh)
     f = 1.5 + x[0]
     L = fem.form(ufl.inner(c * f, v) * (dx + ds))
-    b = assemble_vector(L)
-    apply_lifting(b.array, [a], bcs=[[bc]])
-    b.scatter_reverse(InsertMode.add)
-    set_bc(b.array, [bc])
+    b = fem.assemble_vector(L)
+    fem.apply_lifting(b.array, [a], bcs=[[bc]])
+    b.scatter_reverse(la.InsertMode.add)
+    fem.set_bc(b.array, [bc])
     s = mesh.comm.allreduce(fem.assemble_scalar(fem.form(ufl.inner(c * f, f) * (dx + ds))), op=MPI.SUM)
     return A, b, s
 
@@ -80,15 +77,9 @@ def test_submesh_cell_assembly(d, n, k, space, ghost_mode):
     submesh = create_submesh(mesh_1, edim, entities)[0]
     A_submesh, b_submesh, s_submesh = assemble(submesh, space, k)
 
-    A0_norm, A_norm, b0_norm, b_norm, s0, s1 = \
-        MPI.COMM_WORLD.allreduce(np.array([A_mesh_0.squared_norm(),
-                                           A_submesh.squared_norm(),
-                                           b_mesh_0.squared_norm(),
-                                           b_submesh.squared_norm(),
-                                           s_mesh_0, s_submesh]), op=MPI.SUM)
-    assert np.isclose(A0_norm, A_norm)
-    assert np.isclose(b0_norm, b_norm)
-    assert np.isclose(s0, s1)
+    assert A_mesh_0.squared_norm() == pytest.approx(A_submesh.squared_norm(), rel=1.0e-4, abs=1.0e-4)
+    assert b_mesh_0.norm() == pytest.approx(b_submesh.norm(), rel=1.0e-4)
+    assert np.isclose(s_mesh_0, s_submesh)
 
 
 @pytest.mark.parametrize("n", [2, 6])
@@ -108,12 +99,6 @@ def test_submesh_facet_assembly(n, k, space, ghost_mode):
     square_mesh = create_unit_square(MPI.COMM_WORLD, n, n, ghost_mode=ghost_mode)
     A_square_mesh, b_square_mesh, s_square_mesh = assemble(square_mesh, space, k)
 
-    A0_norm, A_norm, b0_norm, b_norm, s0, s1 = \
-        MPI.COMM_WORLD.allreduce(np.array([A_square_mesh.squared_norm(),
-                                           A_submesh.squared_norm(),
-                                           b_square_mesh.squared_norm(),
-                                           b_submesh.squared_norm(),
-                                           s_submesh, s_square_mesh]), op=MPI.SUM)
-    assert np.isclose(A0_norm, A_norm)
-    assert np.isclose(b0_norm, b_norm)
-    assert np.isclose(s0, s1)
+    assert A_submesh.squared_norm() == pytest.approx(A_square_mesh.squared_norm(), rel=1.0e-5, abs=1.0e-5)
+    assert b_submesh.norm() == pytest.approx(b_square_mesh.norm())
+    assert np.isclose(s_submesh, s_square_mesh)

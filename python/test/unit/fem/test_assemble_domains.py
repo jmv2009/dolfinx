@@ -5,19 +5,19 @@
 # SPDX-License-Identifier:    LGPL-3.0-or-later
 """Unit tests for assembly over domains"""
 
+from mpi4py import MPI
+
 import numpy as np
-import numpy.linalg as linalg
 import pytest
+
 import ufl
-from dolfinx.fem import (Constant, Function, FunctionSpace, assemble_scalar,
-                         dirichletbc, form, assemble_matrix, assemble_vector, apply_lifting, set_bc)
-from dolfinx.la import InsertMode
+from dolfinx import cpp as _cpp
+from dolfinx import default_scalar_type, fem, la
+from dolfinx.fem import (Constant, Function, assemble_scalar, dirichletbc,
+                         form, functionspace)
 from dolfinx.mesh import (GhostMode, Mesh, create_unit_square, locate_entities,
                           locate_entities_boundary, meshtags,
                           meshtags_from_entities)
-from mpi4py import MPI
-from dolfinx import cpp as _cpp
-from dolfinx import default_scalar_type
 
 
 @pytest.fixture
@@ -28,7 +28,7 @@ def mesh():
 def create_cell_meshtags_from_entities(mesh: Mesh, dim: int, cells: np.ndarray, values: np.ndarray):
     mesh.topology.create_connectivity(mesh.topology.dim, 0)
     cell_to_vertices = mesh.topology.connectivity(mesh.topology.dim, 0)
-    entities = _cpp.graph.AdjacencyList_int32([cell_to_vertices.links(cell) for cell in cells])
+    entities = _cpp.graph.AdjacencyList_int32(np.array([cell_to_vertices.links(cell) for cell in cells]))
     return meshtags_from_entities(mesh, dim, entities, values)
 
 
@@ -43,7 +43,7 @@ parametrize_ghost_mode = pytest.mark.parametrize("mode", [
 @pytest.mark.parametrize("meshtags_factory", [meshtags, create_cell_meshtags_from_entities])
 def test_assembly_dx_domains(mode, meshtags_factory):
     mesh = create_unit_square(MPI.COMM_WORLD, 10, 10, ghost_mode=mode)
-    V = FunctionSpace(mesh, ("Lagrange", 1))
+    V = functionspace(mesh, ("Lagrange", 1))
     u, v = ufl.TrialFunction(V), ufl.TestFunction(V)
 
     # Prepare a marking structures
@@ -62,45 +62,45 @@ def test_assembly_dx_domains(mode, meshtags_factory):
 
     # Assemble matrix
     a = form(w * ufl.inner(u, v) * (dx(1) + dx(2) + dx(3)))
-    A = assemble_matrix(a)
-    A.finalize()
+    A = fem.assemble_matrix(a)
+    A.scatter_reverse()
     a2 = form(w * ufl.inner(u, v) * dx)
-    A2 = assemble_matrix(a2)
-    A2.finalize()
-    assert linalg.norm(A.to_dense() - A2.to_dense()) < 1.0e-12
+    A2 = fem.assemble_matrix(a2)
+    A2.scatter_reverse()
+    assert np.allclose(A.data, A2.data)
 
-    bc = dirichletbc(Function(V), range(30))
+    bc = dirichletbc(Function(V), np.arange(30))
 
     # Assemble vector
     L = form(ufl.inner(w, v) * (dx(1) + dx(2) + dx(3)))
-    b = assemble_vector(L)
+    b = fem.assemble_vector(L)
 
-    apply_lifting(b.array, [a], [[bc]])
-    b.scatter_reverse(InsertMode.add)
-    set_bc(b.array, [bc])
+    fem.apply_lifting(b.array, [a], [[bc]])
+    b.scatter_reverse(la.InsertMode.add)
+    fem.set_bc(b.array, [bc])
 
     L2 = form(ufl.inner(w, v) * dx)
-    b2 = assemble_vector(L2)
-    apply_lifting(b2.array, [a], [[bc]])
-    b2.scatter_reverse(InsertMode.add)
-    set_bc(b2.array, [bc])
-    assert linalg.norm(b.array - b2.array) < 1.0e-12
+    b2 = fem.assemble_vector(L2)
+    fem.apply_lifting(b2.array, [a], [[bc]])
+    b2.scatter_reverse(la.InsertMode.add)
+    fem.set_bc(b2.array, [bc])
+    assert np.allclose(b.array, b2.array)
 
     # Assemble scalar
     L = form(w * (dx(1) + dx(2) + dx(3)))
     s = assemble_scalar(L)
     s = mesh.comm.allreduce(s, op=MPI.SUM)
-    assert s == pytest.approx(0.5, 1.0e-12)
+    assert s == pytest.approx(0.5, rel=1.0e-6)
     L2 = form(w * dx)
     s2 = assemble_scalar(L2)
     s2 = mesh.comm.allreduce(s2, op=MPI.SUM)
-    assert s == pytest.approx(s2, 1.0e-12)
+    assert s == pytest.approx(s2, rel=1.0e-6)
 
 
 @pytest.mark.parametrize("mode", [GhostMode.none, GhostMode.shared_facet])
 def test_assembly_ds_domains(mode):
     mesh = create_unit_square(MPI.COMM_WORLD, 10, 10, ghost_mode=mode)
-    V = FunctionSpace(mesh, ("Lagrange", 1))
+    V = functionspace(mesh, ("Lagrange", 1))
     u, v = ufl.TrialFunction(V), ufl.TestFunction(V)
 
     def bottom(x):
@@ -138,33 +138,31 @@ def test_assembly_ds_domains(mode):
     w = Function(V)
     w.x.array[:] = 0.5
 
-    bc = dirichletbc(Function(V), range(30))
+    bc = dirichletbc(Function(V), np.arange(30))
 
     # Assemble matrix
     a = form(w * ufl.inner(u, v) * (ds(1) + ds(2) + ds(3) + ds(6)))
-    A = assemble_matrix(a)
-    A.finalize()
-    norm1 = A.squared_norm()
+    A = fem.assemble_matrix(a)
+    A.scatter_reverse()
     a2 = form(w * ufl.inner(u, v) * ds)
-    A2 = assemble_matrix(a2)
-    A2.finalize()
-    norm2 = A2.squared_norm()
-    assert norm1 == pytest.approx(norm2, 1.0e-12)
+    A2 = fem.assemble_matrix(a2)
+    A2.scatter_reverse()
+    assert np.allclose(A.data, A2.data)
 
     # Assemble vector
     L = form(ufl.inner(w, v) * (ds(1) + ds(2) + ds(3) + ds(6)))
-    b = assemble_vector(L)
+    b = fem.assemble_vector(L)
 
-    apply_lifting(b.array, [a], [[bc]])
-    b.scatter_reverse(InsertMode.add)
-    set_bc(b.array, [bc])
+    fem.apply_lifting(b.array, [a], [[bc]])
+    b.scatter_reverse(la.InsertMode.add)
+    fem.set_bc(b.array, [bc])
 
     L2 = form(ufl.inner(w, v) * ds)
-    b2 = assemble_vector(L2)
-    apply_lifting(b2.array, [a2], [[bc]])
-    b2.scatter_reverse(InsertMode.add)
-    set_bc(b2.array, [bc])
-    assert linalg.norm(b.array) == pytest.approx(linalg.norm(b2.array), 1.0e-12)
+    b2 = fem.assemble_vector(L2)
+    fem.apply_lifting(b2.array, [a2], [[bc]])
+    b2.scatter_reverse(la.InsertMode.add)
+    fem.set_bc(b2.array, [bc])
+    assert np.allclose(b.array, b2.array)
 
     # Assemble scalar
     L = form(w * (ds(1) + ds(2) + ds(3) + ds(6)))
@@ -173,7 +171,8 @@ def test_assembly_ds_domains(mode):
     L2 = form(w * ds)
     s2 = assemble_scalar(L2)
     s2 = mesh.comm.allreduce(s2, op=MPI.SUM)
-    assert (s == pytest.approx(s2, 1.0e-12) and 2.0 == pytest.approx(s, 1.0e-12))
+    assert s == pytest.approx(s2, 1.0e-6)
+    assert 2.0 == pytest.approx(s, 1.0e-6)  # /NOSONAR
 
 
 @parametrize_ghost_mode
@@ -183,13 +182,13 @@ def test_assembly_dS_domains(mode):
     one = Constant(mesh, default_scalar_type(1))
     val = assemble_scalar(form(one * ufl.dS))
     val = mesh.comm.allreduce(val, op=MPI.SUM)
-    assert val == pytest.approx(2 * (N - 1) + N * np.sqrt(2), 1.0e-7)
+    assert val == pytest.approx(2 * (N - 1) + N * np.sqrt(2), 1.0e-5)
 
 
 @parametrize_ghost_mode
 def test_additivity(mode):
     mesh = create_unit_square(MPI.COMM_WORLD, 12, 12, ghost_mode=mode)
-    V = FunctionSpace(mesh, ("Lagrange", 1))
+    V = functionspace(mesh, ("Lagrange", 1))
 
     f1 = Function(V)
     f2 = Function(V)
@@ -226,7 +225,7 @@ def test_manual_integration_domains():
     n = 4
     msh = create_unit_square(MPI.COMM_WORLD, n, n)
 
-    V = FunctionSpace(msh, ("Lagrange", 1))
+    V = functionspace(msh, ("Lagrange", 1))
     u = ufl.TrialFunction(V)
     v = ufl.TestFunction(V)
 
@@ -269,9 +268,9 @@ def test_manual_integration_domains():
 
     # Create forms and assemble
     a, L = create_forms(dx_mt, ds_mt, dS_mt)
-    A_mt = assemble_matrix(a)
-    A_mt.finalize()
-    b_mt = assemble_vector(L)
+    A_mt = fem.assemble_matrix(a)
+    A_mt.scatter_reverse()
+    b_mt = fem.assemble_vector(L)
 
     # Manually specify cells to integrate over (removing ghosts
     # to give same result as above)
@@ -315,9 +314,9 @@ def test_manual_integration_domains():
 
     # Assemble forms and check
     a, L = create_forms(dx_manual, ds_manual, dS_manual)
-    A = assemble_matrix(a)
-    A.finalize()
-    b = assemble_vector(L)
+    A = fem.assemble_matrix(a)
+    A.scatter_reverse()
+    b = fem.assemble_vector(L)
 
-    assert np.isclose(linalg.norm(A.to_dense() - A_mt.to_dense()), 0.0)
-    assert np.isclose(linalg.norm(b.array - b_mt.array), 0.0)
+    assert np.allclose(A.data, A_mt.data)
+    assert np.allclose(b.array, b_mt.array)
