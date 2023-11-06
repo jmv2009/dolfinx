@@ -74,7 +74,9 @@ NB_MODULE(cpp, m)
   nb::module_ refinement = m.def_submodule("refinement", "Refinement module");
   dolfinx_wrappers::refinement(refinement);
 
-  // PETSc-specific wrappers
+// PETSc-specific wrappers
+#ifdef HAS_PETSC
   nb::module_ nls = m.def_submodule("nls", "Nonlinear solver module");
   dolfinx_wrappers::petsc(fem, la, nls);
+#endif
 }
