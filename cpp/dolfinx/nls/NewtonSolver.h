@@ -6,6 +6,8 @@
 
 #pragma once
 
+#ifdef HAS_PETSC
+
 #include <dolfinx/common/MPI.h>
 #include <dolfinx/la/petsc.h>
 #include <functional>
@@ -202,3 +204,5 @@ private:
 };
 } // namespace nls::petsc
 } // namespace dolfinx
+
+#endif
