@@ -54,14 +54,15 @@ public:
                                            std::vector<T>>
                  and std::is_convertible_v<std::remove_cvref_t<W>,
                                            std::vector<std::int64_t>>
-  Geometry(std::shared_ptr<const common::IndexMap> index_map, U&& dofmap,
+  Geometry(std::shared_ptr<const common::IndexMap> index_map,
+           std::vector<U>& dofmaps,
            const std::vector<fem::CoordinateElement<
                typename
 
                std::remove_reference_t<typename V::value_type>>>& elements,
            V&& x, int dim, W&& input_global_indices)
-      : _dim(dim), _dofmap(std::forward<U>(dofmap)), _index_map(index_map),
-        _cmaps(elements), _x(std::forward<V>(x)),
+      : _dim(dim), _dofmaps(dofmaps), _index_map(index_map), _cmaps(elements),
+        _x(std::forward<V>(x)),
         _input_global_indices(std::forward<W>(input_global_indices))
   {
     assert(_x.size() % 3 == 0);
@@ -103,12 +104,12 @@ public:
       MDSPAN_IMPL_STANDARD_NAMESPACE::dextents<std::size_t, 2>>
   dofmap(std::size_t i) const
   {
-    assert(i < _dofmap.size());
+    assert(i < _dofmaps.size());
     int ndofs = _cmaps[i].dim();
     return MDSPAN_IMPL_STANDARD_NAMESPACE::mdspan<
         const std::int32_t,
         MDSPAN_IMPL_STANDARD_NAMESPACE::dextents<std::size_t, 2>>(
-        _dofmap[i].data(), _dofmap[i].size() / ndofs, ndofs);
+        _dofmaps[i].data(), _dofmaps[i].size() / ndofs, ndofs);
   }
 
   /// Index map
@@ -210,6 +211,8 @@ create_geometry(
   auto dof_index_map
       = std::make_shared<common::IndexMap>(std::move(_dof_index_map));
 
+  std::vector<std::vector<std::int32_t>> dofmaps = {dofmap};
+
   // If the mesh has higher order geometry, permute the dofmap
   if (elements[0].needs_dof_permutations())
   {
@@ -275,8 +278,7 @@ create_geometry(
   }
 
   return Geometry<typename std::remove_reference_t<typename U::value_type>>(
-      dof_index_map, std::move(dofmap), elements, std::move(xg), dim,
-      std::move(igi));
+      dof_index_map, dofmaps, elements, std::move(xg), dim, std::move(igi));
 }
 
 /// @brief Create a sub-geometry for a subset of entities.
