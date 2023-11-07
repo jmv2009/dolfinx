@@ -93,11 +93,22 @@ public:
       MDSPAN_IMPL_STANDARD_NAMESPACE::dextents<std::size_t, 2>>
   dofmap() const
   {
-    int ndofs = _cmaps[0].dim();
+    // TODO: remove - compatibility for "single dofmap" (non-mixed topology)
+    return dofmap(0);
+  }
+
+  /// DOF map
+  MDSPAN_IMPL_STANDARD_NAMESPACE::mdspan<
+      const std::int32_t,
+      MDSPAN_IMPL_STANDARD_NAMESPACE::dextents<std::size_t, 2>>
+  dofmap(std::size_t i) const
+  {
+    assert(i < _dofmap.size());
+    int ndofs = _cmaps[i].dim();
     return MDSPAN_IMPL_STANDARD_NAMESPACE::mdspan<
         const std::int32_t,
         MDSPAN_IMPL_STANDARD_NAMESPACE::dextents<std::size_t, 2>>(
-        _dofmap.data(), _dofmap.size() / ndofs, ndofs);
+        _dofmap[i].data(), _dofmap[i].size() / ndofs, ndofs);
   }
 
   /// Index map
@@ -138,7 +149,8 @@ private:
   int _dim;
 
   // Map per cell for extracting coordinate data
-  std::vector<std::int32_t> _dofmap;
+  // for each cell
+  std::vector<std::vector<std::int32_t>> _dofmaps;
 
   // IndexMap for geometry 'dofmap'
   std::shared_ptr<const common::IndexMap> _index_map;
