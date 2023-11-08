@@ -404,9 +404,9 @@ create_subgeometry(const Topology& topology, const Geometry<T>& geometry,
                  [&igi](std::int32_t sub_x_dof) { return igi[sub_x_dof]; });
 
   // Create geometry
-  return {Geometry<T>(sub_x_dof_index_map, std::move(sub_x_dofmap),
-                      {sub_coord_ele}, std::move(sub_x), geometry.dim(),
-                      std::move(sub_igi)),
+  std::vector<std::vector<std::int32_t>> sub_x_dofmaps = {sub_x_dofmap};
+  return {Geometry<T>(sub_x_dof_index_map, sub_x_dofmaps, {sub_coord_ele},
+                      std::move(sub_x), geometry.dim(), std::move(sub_igi)),
           std::move(subx_to_x_dofmap)};
 }
 
