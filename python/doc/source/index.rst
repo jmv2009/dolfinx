@@ -9,11 +9,12 @@ Project <https://fenicsproject.org/>`_. It is developed on `GitHub
    :maxdepth: 2
 
    installation
-   demos
    api
    developer
    contributing
 
+
+.. demos
 
 * :ref:`genindex`
 * :ref:`search`
