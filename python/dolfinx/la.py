@@ -258,6 +258,8 @@ def create_petsc_vector_wrap(x: Vector):
         object.
 
     """
+    if not _cpp.has_petsc:
+        raise RuntimeError("Requires PETSc")
     from petsc4py import PETSc
     map = x.index_map
     ghosts = map.ghosts.astype(PETSc.IntType)  # type: ignore
@@ -275,6 +277,8 @@ def create_petsc_vector(map, bs: int):
         bs: Block size of the vector.
 
     """
+    if not _cpp.has_petsc:
+        raise RuntimeError("Requires PETSc")
     from petsc4py import PETSc
     ghosts = map.ghosts.astype(PETSc.IntType)  # type: ignore
     size = (map.size_local * bs, map.size_global * bs)
@@ -283,6 +287,8 @@ def create_petsc_vector(map, bs: int):
 
 def orthonormalize(basis):
     """Orthogoalise set of PETSc vectors in-place"""
+    if not _cpp.has_petsc:
+        raise RuntimeError("Requires PETSc")
     for i, x in enumerate(basis):
         for y in basis[:i]:
             alpha = x.dot(y)
@@ -292,6 +298,8 @@ def orthonormalize(basis):
 
 def is_orthonormal(basis, eps: float = 1.0e-12) -> bool:
     """Check that list of PETSc vectors are orthonormal"""
+    if not _cpp.has_petsc:
+        raise RuntimeError("Requires PETSc")
     for x in basis:
         if abs(x.norm() - 1.0) > eps:
             return False

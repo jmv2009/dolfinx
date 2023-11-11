@@ -6,7 +6,6 @@
 requires = [
       "scikit-build-core[pyproject]",
       "nanobind>=1.8.0",
-      "petsc4py",
       "mpi4py",
 ]
 build-backend = "scikit_build_core.build"
@@ -26,7 +25,6 @@ packages = ["dolfinx"]
 dependencies = [
       "numpy>=1.21",
       "cffi",
-      "petsc4py",
       "mpi4py",
       "fenics-ffcx>=0.8.0.dev0,<0.9.0",
       "fenics-ufl>=2023.3.0.dev0,<2023.4.0",
@@ -35,7 +33,7 @@ dependencies = [
 [project.optional-dependencies]
 docs = ["markdown", "pyyaml", "sphinx==5.0.2", "sphinx_rtd_theme"]
 lint = ["flake8", "pydocstyle"]
-optional = ["numba"]
+optional = ["numba", "petsc4py"]
 test = ["pytest", "sympy", "scipy", "matplotlib", "fenics-dolfinx[optional]"]
 ci = [
       "mypy",

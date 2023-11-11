@@ -25,19 +25,19 @@ def mesh():
 
 @pytest.fixture
 def V(mesh):
-    return functionspace(mesh, ('Lagrange', 1))
+    return functionspace(mesh, ("Lagrange", 1))
 
 
 @pytest.fixture
 def W(mesh):
     gdim = mesh.geometry.dim
-    return functionspace(mesh, ('Lagrange', 1, (gdim,)))
+    return functionspace(mesh, ("Lagrange", 1, (gdim,)))
 
 
 @pytest.fixture
 def Q(mesh):
-    W = element('Lagrange', mesh.basix_cell(), 1, shape=(mesh.geometry.dim,))
-    V = element('Lagrange', mesh.basix_cell(), 1)
+    W = element("Lagrange", mesh.basix_cell(), 1, shape=(mesh.geometry.dim,))
+    V = element("Lagrange", mesh.basix_cell(), 1)
     return functionspace(mesh, mixed_element([W, V]))
 
 
@@ -99,15 +99,23 @@ def test_sub(Q, W):
 
     assert W.dofmap.dof_layout.num_dofs == X.dofmap.dof_layout.num_dofs
     for dim, entity_count in enumerate([4, 6, 4, 1]):
-        assert W.dofmap.dof_layout.num_entity_dofs(dim) == X.dofmap.dof_layout.num_entity_dofs(dim)
-        assert W.dofmap.dof_layout.num_entity_closure_dofs(dim) == X.dofmap.dof_layout.num_entity_closure_dofs(dim)
+        assert W.dofmap.dof_layout.num_entity_dofs(
+            dim
+        ) == X.dofmap.dof_layout.num_entity_dofs(dim)
+        assert W.dofmap.dof_layout.num_entity_closure_dofs(
+            dim
+        ) == X.dofmap.dof_layout.num_entity_closure_dofs(dim)
         for i in range(entity_count):
-            assert len(W.dofmap.dof_layout.entity_dofs(dim, i)) \
-                == len(X.dofmap.dof_layout.entity_dofs(dim, i)) \
+            assert (
+                len(W.dofmap.dof_layout.entity_dofs(dim, i))
+                == len(X.dofmap.dof_layout.entity_dofs(dim, i))
                 == len(X.dofmap.dof_layout.entity_dofs(dim, 0))
-            assert len(W.dofmap.dof_layout.entity_closure_dofs(dim, i)) \
-                == len(X.dofmap.dof_layout.entity_closure_dofs(dim, i)) \
+            )
+            assert (
+                len(W.dofmap.dof_layout.entity_closure_dofs(dim, i))
+                == len(X.dofmap.dof_layout.entity_closure_dofs(dim, i))
                 == len(X.dofmap.dof_layout.entity_closure_dofs(dim, 0))
+            )
 
     assert W.dofmap.dof_layout.block_size == X.dofmap.dof_layout.block_size
     assert W.dofmap.bs * len(W.dofmap.cell_dofs(0)) == len(X.dofmap.cell_dofs(0))
@@ -115,7 +123,9 @@ def test_sub(Q, W):
     assert W.element.num_sub_elements == X.element.num_sub_elements
     assert W.element.space_dimension == X.element.space_dimension
     assert W.element.value_shape == X.element.value_shape
-    assert W.element.interpolation_points().shape == X.element.interpolation_points().shape
+    assert (
+        W.element.interpolation_points().shape == X.element.interpolation_points().shape
+    )
     assert W.element == X.element
 
 
@@ -168,7 +178,7 @@ def test_collapse(W, V):
     assert Vc.dofmap.cell_dofs(0)[0] == V.dofmap.cell_dofs(0)[0]
     f0 = Function(V)
     f1 = Function(Vc)
-    assert f0.vector.getSize() == f1.vector.getSize()
+    assert f0.x.index_map.size_global == f1.x.index_map.size_global
 
 
 def test_argument_equality(mesh, V, V2, W, W2):
@@ -250,20 +260,21 @@ def test_vector_function_space_cell_type():
     cell = Cell("interval", geometric_dimension=gdim)
     domain = Mesh(element("Lagrange", "interval", 1, gdim=gdim, shape=(1,)))
     cells = np.array([[0, 1]], dtype=np.int64)
-    x = np.array([[0., 0.], [1., 1.]])
+    x = np.array([[0.0, 0.0], [1.0, 1.0]])
     mesh = create_mesh(comm, cells, x, domain)
 
     # Create functions space over mesh, and check element cell
     # is correct
-    V = functionspace(mesh, ('Lagrange', 1, (gdim,)))
+    V = functionspace(mesh, ("Lagrange", 1, (gdim,)))
     assert V.ufl_element().cell == cell
 
 
 @pytest.mark.skip_in_parallel
 def test_manifold_spaces():
-    vertices = np.array([
-        (0.0, 0.0, 1.0), (1.0, 1.0, 1.0),
-        (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)], dtype=default_real_type)
+    vertices = np.array(
+        [(0.0, 0.0, 1.0), (1.0, 1.0, 1.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)],
+        dtype=default_real_type,
+    )
     cells = [(0, 1, 2), (0, 1, 3)]
     domain = Mesh(element("Lagrange", "triangle", 1, gdim=3, shape=(2,)))
     mesh = create_mesh(MPI.COMM_WORLD, cells, vertices, domain)

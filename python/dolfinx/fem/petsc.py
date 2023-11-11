@@ -18,13 +18,15 @@ import functools
 import os
 import typing
 
-import petsc4py
-import petsc4py.lib
-from petsc4py import PETSc
+import dolfinx.cpp as _cpp
+if _cpp.common.has_petsc:
+    import petsc4py
+    import petsc4py.lib
+    from petsc4py import PETSc
+    from dolfinx.la import create_petsc_vector
 
 import numpy as np
 
-import dolfinx.cpp as _cpp
 import ufl
 from dolfinx import la
 from dolfinx.cpp.fem import pack_coefficients as _pack_coefficients
@@ -36,7 +38,6 @@ from dolfinx.fem.forms import Form
 from dolfinx.fem.forms import extract_function_spaces as _extract_spaces
 from dolfinx.fem.forms import form as _create_form
 from dolfinx.fem.function import Function as _Function
-from dolfinx.la import create_petsc_vector
 
 __all__ = ["create_vector", "create_vector_block", "create_vector_nest",
            "create_matrix", "create_matrix_block", "create_matrix_nest",
@@ -46,6 +47,19 @@ __all__ = ["create_vector", "create_vector_block", "create_vector_nest",
            "LinearProblem", "NonlinearProblem"]
 
 
+def check_petsc():
+    def pass_decorator(func):
+        return func
+
+    def error_decorator(func):
+        def petsc_error_message(*args, **kwargs):
+            raise RuntimeError("Needs PETSc")
+        return petsc_error_message
+
+    return pass_decorator if _cpp.common.has_petsc else error_decorator
+
+
+@check_petsc
 def _extract_function_spaces(a: typing.List[typing.List[Form]]):
     """From a rectangular array of bilinear forms, extract the function
     spaces for each block row and block column.
@@ -78,7 +92,7 @@ def _extract_function_spaces(a: typing.List[typing.List[Form]]):
 
 # -- Vector instantiation ----------------------------------------------------
 
-
+@check_petsc
 def create_vector(L: Form) -> PETSc.Vec:
     """Create a PETSc vector that is compaible with a linear form.
 
@@ -93,6 +107,7 @@ def create_vector(L: Form) -> PETSc.Vec:
     return create_petsc_vector(dofmap.index_map, dofmap.index_map_bs)
 
 
+@check_petsc
 def create_vector_block(L: typing.List[Form]) -> PETSc.Vec:
     """Create a PETSc vector (blocked) that is compaible with a list of linear forms.
 
@@ -108,6 +123,7 @@ def create_vector_block(L: typing.List[Form]) -> PETSc.Vec:
     return _cpp.fem.petsc.create_vector_block(maps)
 
 
+@check_petsc
 def create_vector_nest(L: typing.List[Form]) -> PETSc.Vec:
     """Create a PETSc nested vector (``VecNest``) that is compatible with a list of linear forms.
 
@@ -126,6 +142,8 @@ def create_vector_nest(L: typing.List[Form]) -> PETSc.Vec:
 
 # -- Matrix instantiation ----------------------------------------------------
 
+
+@check_petsc
 def create_matrix(a: Form, mat_type=None) -> PETSc.Mat:
     """Create a PETSc matrix that is compatible with a bilinear form.
 
@@ -143,6 +161,7 @@ def create_matrix(a: Form, mat_type=None) -> PETSc.Mat:
         return _cpp.fem.petsc.create_matrix(a._cpp_object, mat_type)
 
 
+@check_petsc
 def create_matrix_block(a: typing.List[typing.List[Form]]) -> PETSc.Mat:
     """Create a PETSc matrix that is compatible with a rectangular array of bilinear forms.
 
@@ -158,6 +177,7 @@ def create_matrix_block(a: typing.List[typing.List[Form]]) -> PETSc.Mat:
     return _cpp.fem.petsc.create_matrix_block(_a)
 
 
+@check_petsc
 def create_matrix_nest(a: typing.List[typing.List[Form]]) -> PETSc.Mat:
     """Create a PETSc matrix (``MatNest``) that is compatible with a rectangular array of bilinear forms.
 
@@ -174,6 +194,7 @@ def create_matrix_nest(a: typing.List[typing.List[Form]]) -> PETSc.Mat:
 
 # -- Vector assembly ---------------------------------------------------------
 
+@check_petsc
 @functools.singledispatch
 def assemble_vector(L: typing.Any, constants=None, coeffs=None) -> PETSc.Vec:
     """Assemble linear form into a new PETSc vector.
@@ -218,6 +239,7 @@ def _assemble_vector_vec(b: PETSc.Vec, L: Form, constants=None, coeffs=None) -> 
     return b
 
 
+@check_petsc
 @functools.singledispatch
 def assemble_vector_nest(L: typing.Any, constants=None, coeffs=None) -> PETSc.Vec:
     """Assemble linear forms into a new nested PETSc (``VecNest``) vector.
@@ -250,6 +272,7 @@ def _assemble_vector_nest_vec(b: PETSc.Vec, L: typing.List[Form], constants=None
 
 
 # FIXME: Revise this interface
+@check_petsc
 @functools.singledispatch
 def assemble_vector_block(L: typing.List[Form],
                           a: typing.List[typing.List[Form]],
@@ -332,6 +355,7 @@ def _assemble_vector_block_vec(b: PETSc.Vec,
 
 
 # -- Matrix assembly ---------------------------------------------------------
+@check_petsc
 @functools.singledispatch
 def assemble_matrix(a: typing.Any, bcs: typing.List[DirichletBC] = [],
                     diagonal: float = 1.0, constants=None, coeffs=None):
@@ -378,6 +402,7 @@ def assemble_matrix_mat(A: PETSc.Mat, a: Form, bcs: typing.List[DirichletBC] = [
 
 
 # FIXME: Revise this interface
+@check_petsc
 @functools.singledispatch
 def assemble_matrix_nest(a: typing.List[typing.List[Form]],
                          bcs: typing.List[DirichletBC] = [], mat_types=[],
@@ -447,6 +472,7 @@ def _assemble_matrix_nest_mat(A: PETSc.Mat, a: typing.List[typing.List[Form]],
 
 
 # FIXME: Revise this interface
+@check_petsc
 @functools.singledispatch
 def assemble_matrix_block(a: typing.List[typing.List[Form]],
                           bcs: typing.List[DirichletBC] = [],
@@ -506,6 +532,7 @@ def _assemble_matrix_block_mat(A: PETSc.Mat, a: typing.List[typing.List[Form]],
 
 # -- Modifiers for Dirichlet conditions ---------------------------------------
 
+@check_petsc
 def apply_lifting(b: PETSc.Vec, a: typing.List[Form],
                   bcs: typing.List[typing.List[DirichletBC]],
                   x0: typing.List[PETSc.Vec] = [],
@@ -518,6 +545,7 @@ def apply_lifting(b: PETSc.Vec, a: typing.List[Form],
         _assemble.apply_lifting(b_local.array_w, a, bcs, x0_r, scale, constants, coeffs)
 
 
+@check_petsc
 def apply_lifting_nest(b: PETSc.Vec, a: typing.List[typing.List[Form]],
                        bcs: typing.List[DirichletBC],
                        x0: typing.Optional[PETSc.Vec] = None,
@@ -535,6 +563,7 @@ def apply_lifting_nest(b: PETSc.Vec, a: typing.List[typing.List[Form]],
     return b
 
 
+@check_petsc
 def set_bc(b: PETSc.Vec, bcs: typing.List[DirichletBC],
            x0: typing.Optional[PETSc.Vec] = None, scale: float = 1.0) -> None:
     """Apply the function :func:`dolfinx.fem.set_bc` to a PETSc Vector."""
