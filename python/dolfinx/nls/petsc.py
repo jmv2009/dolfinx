@@ -4,8 +4,11 @@
 #
 # SPDX-License-Identifier:    LGPL-3.0-or-later
 """Methods for solving nonlinear equations using PETSc solvers."""
-
 from __future__ import annotations
+
+from dolfinx.cpp.common import has_petsc
+if not has_petsc:
+    raise ImportError("dolfinx has not been compiled with PETSc")
 
 import typing
 

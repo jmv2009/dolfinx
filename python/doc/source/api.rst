@@ -39,7 +39,8 @@ application-level use.
 
    dolfinx.cpp.common
    dolfinx.cpp.fem
-   dolfinx.cpp.fem.petsc
+   .. dolfinx.cpp.fem.petsc
+
    dolfinx.cpp.geometry
    dolfinx.cpp.graph
    dolfinx.cpp.io
@@ -47,5 +48,6 @@ application-level use.
    dolfinx.cpp.log
    dolfinx.cpp.mesh
    dolfinx.cpp.nls
-   dolfinx.cpp.nls.petsc
+   .. dolfinx.cpp.nls.petsc
+
    dolfinx.cpp.refinement
