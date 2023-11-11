@@ -90,10 +90,10 @@ MatSetValues_ctypes.argtypes = [
     ctypes_index,
     ctypes.POINTER(ctypes_index),  # type: ignore
     ctypes_index,
-    ctypes.POINTER(ctypes_index),
+    ctypes.POINTER(ctypes_index),  # type: ignore
     ctypes.c_void_p,
     ctypes.c_int,
-]  # type: ignore
+]
 del petsc_lib_ctypes
 
 
