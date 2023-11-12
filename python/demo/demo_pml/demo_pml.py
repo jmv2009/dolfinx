@@ -15,6 +15,11 @@
 # First, we import the required modules
 
 # +
+from dolfinx.cpp.common import has_petsc
+if not has_petsc:
+    print("This demo requires PETSc")
+    exit(0)
+
 import sys
 from functools import partial
 from typing import Tuple, Union
