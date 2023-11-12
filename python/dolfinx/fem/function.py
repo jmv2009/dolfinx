@@ -424,7 +424,7 @@ class Function(ufl.Coefficient):
             Prefer :func`x` where possible.
 
         """
-        if not _cpp.has_petsc:
+        if not _cpp.common.has_petsc:
             raise RuntimeError("Requires PETSc")
         if self._petsc_x is None:
             from dolfinx.la import create_petsc_vector_wrap
