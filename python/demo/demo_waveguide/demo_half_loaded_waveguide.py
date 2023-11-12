@@ -42,6 +42,10 @@
 import sys
 
 from mpi4py import MPI
+from dolfinx.cpp.common import has_petsc
+if not has_petsc:
+    print("This demo requires PETSc")
+    exit(0)
 
 import numpy as np
 from analytical_modes import verify_mode

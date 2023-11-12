@@ -114,6 +114,11 @@
 import os
 
 from mpi4py import MPI
+from dolfinx.cpp.common import has_petsc
+if not has_petsc:
+    print("This demo requires PETSc")
+    exit(0)
+
 from petsc4py import PETSc
 
 import numpy as np

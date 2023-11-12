@@ -28,9 +28,9 @@ import matplotlib.pylab as plt
 import numpy as np
 
 from dolfinx.cpp.common import has_petsc
-
 if not has_petsc:
-    raise RuntimeError("This demo requires PETSc")
+    print("This demo requires PETSc")
+    exit(0)
 
 import basix
 import basix.ufl

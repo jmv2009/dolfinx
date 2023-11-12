@@ -109,6 +109,11 @@
 # We first import the modules and functions that the program uses:
 
 from mpi4py import MPI
+from dolfinx.cpp.common import has_petsc
+if not has_petsc:
+    print("This demo requires PETSc")
+    exit(0)
+
 from petsc4py.PETSc import ScalarType  # type: ignore
 
 # +
