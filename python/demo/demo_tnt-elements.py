@@ -21,34 +21,24 @@
 # We begin this demo by importing the required modules.
 
 from mpi4py import MPI
+from dolfinx import has_petsc
+if not has_petsc:
+    print("This demo requires PETSc")
+    exit(0)
 
 # +
 import matplotlib
 import matplotlib.pylab as plt
 import numpy as np
 
-from dolfinx import has_petsc
-if not has_petsc:
-    print("This demo requires PETSc")
-    exit(0)
-
 import basix
 import basix.ufl
 from dolfinx import fem, mesh
 from dolfinx.fem.petsc import LinearProblem
-from ufl import (
-    SpatialCoordinate,
-    TestFunction,
-    TrialFunction,
-    cos,
-    div,
-    dx,
-    grad,
-    inner,
-    sin,
-)
+from ufl import (SpatialCoordinate, TestFunction, TrialFunction, cos, div, dx,
+                 grad, inner, sin)
 
-matplotlib.use("agg")
+matplotlib.use('agg')
 # -
 
 # ## Defining a degree 1 TNT element
@@ -91,17 +81,15 @@ wcoeffs = np.eye(8, 9)
 # +
 wcoeffs2 = np.empty((8, 9))
 pts, wts = basix.make_quadrature(basix.CellType.quadrilateral, 4)
-evals = basix.tabulate_polynomials(
-    basix.PolynomialType.legendre, basix.CellType.quadrilateral, 2, pts
-)
+evals = basix.tabulate_polynomials(basix.PolynomialType.legendre, basix.CellType.quadrilateral, 2, pts)
 
 for j, v in enumerate(evals):
     wcoeffs2[0, j] = sum(v * wts)  # 1
     wcoeffs2[1, j] = sum(v * pts[:, 1] * wts)  # y
-    wcoeffs2[2, j] = sum(v * pts[:, 1] ** 2 * wts)  # y^2
+    wcoeffs2[2, j] = sum(v * pts[:, 1]**2 * wts)  # y^2
     wcoeffs2[3, j] = sum(v * pts[:, 0] * pts[:, 1] * wts)  # xy
     wcoeffs2[4, j] = sum(v * pts[:, 0] * pts[:, 1] ** 2 * wts)  # xy^2
-    wcoeffs2[5, j] = sum(v * pts[:, 0] ** 2 * pts[:, 1] * wts)  # x^2y
+    wcoeffs2[5, j] = sum(v * pts[:, 0]**2 * pts[:, 1] * wts)  # x^2y
 # -
 
 # ### Interpolation operators
@@ -118,7 +106,7 @@ M = [[], [], [], []]  # type: ignore [var-annotated]
 
 for v in topology[0]:
     x[0].append(np.array(geometry[v]))
-    M[0].append(np.array([[[[1.0]]]]))
+    M[0].append(np.array([[[[1.]]]]))
 # -
 
 # For each edge, we define points and a matrix that represent the
@@ -152,18 +140,8 @@ M[2].append(np.zeros([0, 1, 0, 1]))
 # this element so that it can be used with FFCx/DOLFINx.
 
 tnt_degree1 = basix.ufl.custom_element(
-    basix.CellType.quadrilateral,
-    [],
-    wcoeffs,
-    x,
-    M,
-    0,
-    basix.MapType.identity,
-    basix.SobolevSpace.H1,
-    False,
-    1,
-    2,
-)
+    basix.CellType.quadrilateral, [], wcoeffs, x, M, 0, basix.MapType.identity,
+    basix.SobolevSpace.H1, False, 1, 2)
 
 # ## Creating higher degree TNT elements
 #
@@ -198,13 +176,11 @@ def create_tnt_quad(degree):
     # Vertices
     for v in topology[0]:
         x[0].append(np.array(geometry[v]))
-        M[0].append(np.array([[[[1.0]]]]))
+        M[0].append(np.array([[[[1.]]]]))
 
     # Edges
     pts, wts = basix.make_quadrature(basix.CellType.interval, 2 * degree)
-    poly = basix.tabulate_polynomials(
-        basix.PolynomialType.legendre, basix.CellType.interval, degree - 1, pts
-    )
+    poly = basix.tabulate_polynomials(basix.PolynomialType.legendre, basix.CellType.interval, degree - 1, pts)
     edge_ndofs = poly.shape[0]
     for e in topology[1]:
         v0 = geometry[e[0]]
@@ -223,9 +199,7 @@ def create_tnt_quad(degree):
         M[2].append(np.zeros([0, 1, 0, 1]))
     else:
         pts, wts = basix.make_quadrature(basix.CellType.quadrilateral, 2 * degree - 1)
-        poly = basix.tabulate_polynomials(
-            basix.PolynomialType.legendre, basix.CellType.quadrilateral, degree - 2, pts
-        )
+        poly = basix.tabulate_polynomials(basix.PolynomialType.legendre, basix.CellType.quadrilateral, degree - 2, pts)
         face_ndofs = poly.shape[0]
         x[2].append(pts)
         mat = np.zeros((face_ndofs, 1, len(pts), 1))
@@ -233,19 +207,8 @@ def create_tnt_quad(degree):
             mat[i, 0, :, 0] = wts[:] * poly[i, :]
         M[2].append(mat)
 
-    return basix.ufl.custom_element(
-        basix.CellType.quadrilateral,
-        [],
-        wcoeffs,
-        x,
-        M,
-        0,
-        basix.MapType.identity,
-        basix.SobolevSpace.H1,
-        False,
-        degree,
-        degree + 1,
-    )
+    return basix.ufl.custom_element(basix.CellType.quadrilateral, [], wcoeffs, x, M, 0,
+                                    basix.MapType.identity, basix.SobolevSpace.H1, False, degree, degree + 1)
 
 
 # ## Comparing TNT elements and Q elements
@@ -263,7 +226,7 @@ def poisson_error(V: fem.FunctionSpace):
 
     x = SpatialCoordinate(msh)
     u_exact = sin(10 * x[1]) * cos(15 * x[0])
-    f = -div(grad(u_exact))
+    f = - div(grad(u_exact))
 
     a = inner(grad(u), grad(v)) * dx
     L = inner(f, v) * dx
@@ -281,7 +244,7 @@ def poisson_error(V: fem.FunctionSpace):
     problem = LinearProblem(a, L, bcs=[bc], petsc_options={"ksp_rtol": 1e-12})
     uh = problem.solve()
 
-    M = (u_exact - uh) ** 2 * dx
+    M = (u_exact - uh)**2 * dx
     M = fem.form(M)
     error = msh.comm.allreduce(fem.assemble_scalar(M), op=MPI.SUM)
     return error**0.5

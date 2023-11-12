@@ -4,34 +4,30 @@
 #
 # SPDX-License-Identifier:    LGPL-3.0-or-later
 """Unit tests for the KrylovSolver interface"""
+import pytest
+import dolfinx
+if not dolfinx.has_petsc:
+    pytest.skip(allow_module_level=True)
 
 from contextlib import ExitStack
 
 from mpi4py import MPI
-from dolfinx import has_petsc
-import pytest
-
-if not has_petsc:
-    pytest.skip(allow_module_level=True)
-
 from petsc4py import PETSc
 import numpy as np
 
 import ufl
 from dolfinx import la
-from dolfinx.fem import (
-    Function,
-    dirichletbc,
-    form,
-    functionspace,
-    locate_dofs_topological,
-)
-from dolfinx.fem.petsc import apply_lifting, assemble_matrix, assemble_vector, set_bc
+from dolfinx.fem import (Function, dirichletbc, form, functionspace,
+                         locate_dofs_topological)
+from dolfinx.fem.petsc import (apply_lifting, assemble_matrix, assemble_vector,
+                               set_bc)
 from dolfinx.mesh import create_unit_square, locate_entities_boundary
-from ufl import Identity, TestFunction, TrialFunction, dot, dx, grad, inner, sym, tr
+from ufl import (Identity, TestFunction, TrialFunction, dot, dx, grad, inner,
+                 sym, tr)
 
 
 def test_krylov_solver_lu():
+
     mesh = create_unit_square(MPI.COMM_WORLD, 12, 12)
     V = functionspace(mesh, ("Lagrange", 1))
     u, v = TrialFunction(V), TestFunction(V)
@@ -98,19 +94,18 @@ def test_krylov_samg_solver_elasticity():
 
         # Stress computation
         def sigma(v):
-            return 2.0 * mu * sym(grad(v)) + lmbda * tr(sym(grad(v))) * Identity(2)
+            return 2.0 * mu * sym(grad(v)) + lmbda * tr(sym(
+                grad(v))) * Identity(2)
 
         # Define problem
         mesh = create_unit_square(MPI.COMM_WORLD, N, N)
         gdim = mesh.geometry.dim
-        V = functionspace(mesh, ("Lagrange", 1, (gdim,)))
+        V = functionspace(mesh, ('Lagrange', 1, (gdim,)))
         u = TrialFunction(V)
         v = TestFunction(V)
 
         facetdim = mesh.topology.dim - 1
-        bndry_facets = locate_entities_boundary(
-            mesh, facetdim, lambda x: np.full(x.shape[1], True)
-        )
+        bndry_facets = locate_entities_boundary(mesh, facetdim, lambda x: np.full(x.shape[1], True))
         bdofs = locate_dofs_topological(V.sub(0), V, facetdim, bndry_facets)
         bc = dirichletbc(PETSc.ScalarType(0), bdofs, V.sub(0))
 

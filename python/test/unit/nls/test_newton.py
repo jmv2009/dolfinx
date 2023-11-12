@@ -4,35 +4,23 @@
 #
 # SPDX-License-Identifier:    LGPL-3.0-or-later
 """Unit tests for Newton solver assembly"""
-
-from mpi4py import MPI
-from dolfinx import has_petsc
 import pytest
-
-if not has_petsc:
+import dolfinx
+if not dolfinx.has_petsc:
     pytest.skip(allow_module_level=True)
 
+from mpi4py import MPI
 from petsc4py import PETSc
+
 import numpy as np
 
 import ufl
 from dolfinx import cpp as _cpp
 from dolfinx import default_real_type
-from dolfinx.fem import (
-    Function,
-    dirichletbc,
-    form,
-    functionspace,
-    locate_dofs_geometrical,
-)
-from dolfinx.fem.petsc import (
-    apply_lifting,
-    assemble_matrix,
-    assemble_vector,
-    create_matrix,
-    create_vector,
-    set_bc,
-)
+from dolfinx.fem import (Function, dirichletbc, form, functionspace,
+                         locate_dofs_geometrical)
+from dolfinx.fem.petsc import (apply_lifting, assemble_matrix, assemble_vector,
+                               create_matrix, create_vector, set_bc)
 from dolfinx.la import create_petsc_vector
 from dolfinx.mesh import create_unit_square
 from ufl import TestFunction, TrialFunction, derivative, dx, grad, inner
@@ -87,9 +75,7 @@ class NonlinearPDE_SNESProblem:
         """Assemble residual vector."""
         x.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
         x.copy(self.u.vector)
-        self.u.vector.ghostUpdate(
-            addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD
-        )
+        self.u.vector.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
 
         with F.localForm() as f_local:
             f_local.set(0.0)
@@ -114,13 +100,9 @@ def test_linear_pde():
     v = TestFunction(V)
     F = inner(10.0, v) * dx - inner(grad(u), grad(v)) * dx
 
-    bc = dirichletbc(
-        PETSc.ScalarType(1.0),
-        locate_dofs_geometrical(
-            V, lambda x: np.logical_or(np.isclose(x[0], 0.0), np.isclose(x[0], 1.0))
-        ),
-        V,
-    )
+    bc = dirichletbc(PETSc.ScalarType(1.0),
+                     locate_dofs_geometrical(V, lambda x: np.logical_or(np.isclose(x[0], 0.0),
+                                                                        np.isclose(x[0], 1.0))), V)
 
     # Create nonlinear problem
     problem = NonlinearPDEProblem(F, u, bc)
@@ -149,19 +131,12 @@ def test_nonlinear_pde():
     V = functionspace(mesh, ("Lagrange", 1))
     u = Function(V)
     v = TestFunction(V)
-    F = (
-        inner(5.0, v) * dx
-        - ufl.sqrt(u * u) * inner(grad(u), grad(v)) * dx
-        - inner(u, v) * dx
-    )
+    F = inner(5.0, v) * dx - ufl.sqrt(u * u) * inner(
+        grad(u), grad(v)) * dx - inner(u, v) * dx
 
-    bc = dirichletbc(
-        PETSc.ScalarType(1.0),
-        locate_dofs_geometrical(
-            V, lambda x: np.logical_or(np.isclose(x[0], 0.0), np.isclose(x[0], 1.0))
-        ),
-        V,
-    )
+    bc = dirichletbc(PETSc.ScalarType(1.0),
+                     locate_dofs_geometrical(V, lambda x: np.logical_or(np.isclose(x[0], 0.0),
+                                                                        np.isclose(x[0], 1.0))), V)
 
     # Create nonlinear problem
     problem = NonlinearPDEProblem(F, u, bc)
@@ -191,20 +166,12 @@ def test_nonlinear_pde_snes():
     V = functionspace(mesh, ("Lagrange", 1))
     u = Function(V)
     v = TestFunction(V)
-    F = (
-        inner(5.0, v) * dx
-        - ufl.sqrt(u * u) * inner(grad(u), grad(v)) * dx
-        - inner(u, v) * dx
-    )
+    F = inner(5.0, v) * dx - ufl.sqrt(u * u) * inner(grad(u), grad(v)) * dx - inner(u, v) * dx
 
     u_bc = Function(V)
     u_bc.x.array[:] = 1.0
-    bc = dirichletbc(
-        u_bc,
-        locate_dofs_geometrical(
-            V, lambda x: np.logical_or(np.isclose(x[0], 0.0), np.isclose(x[0], 1.0))
-        ),
-    )
+    bc = dirichletbc(u_bc, locate_dofs_geometrical(V, lambda x: np.logical_or(np.isclose(x[0], 0.0),
+                                                                              np.isclose(x[0], 1.0))))
 
     # Create nonlinear problem
     problem = NonlinearPDE_SNESProblem(F, u, bc)

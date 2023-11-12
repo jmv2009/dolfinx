@@ -18,15 +18,13 @@
 # We begin this demo by importing the required modules.
 
 from mpi4py import MPI
-
-# +
-import matplotlib.pylab as plt
-import numpy as np
-
 from dolfinx import has_petsc
 if not has_petsc:
     print("This demo requires PETSc")
     exit(0)
+# +
+import matplotlib.pylab as plt
+import numpy as np
 
 import basix
 import basix.ufl
@@ -58,12 +56,9 @@ from ufl import ds, dx, grad, inner
 # array.
 
 # +
-element = basix.create_element(
-    basix.ElementFamily.P, basix.CellType.interval, 10, basix.LagrangeVariant.equispaced
-)
-pts = basix.create_lattice(
-    basix.CellType.interval, 200, basix.LatticeType.equispaced, True
-)
+element = basix.create_element(basix.ElementFamily.P, basix.CellType.interval, 10,
+                               basix.LagrangeVariant.equispaced)
+pts = basix.create_lattice(basix.CellType.interval, 200, basix.LatticeType.equispaced, True)
 values = element.tabulate(0, pts)[0, :, :, 0]
 if MPI.COMM_WORLD.size == 1:
     for i in range(values.shape[1]):
@@ -89,9 +84,8 @@ if MPI.COMM_WORLD.size == 1:
 # to define the basis functions.
 
 # +
-element = basix.create_element(
-    basix.ElementFamily.P, basix.CellType.interval, 10, basix.LagrangeVariant.gll_warped
-)
+element = basix.create_element(basix.ElementFamily.P, basix.CellType.interval, 10,
+                               basix.LagrangeVariant.gll_warped)
 values = element.tabulate(0, pts)[0, :, :, 0]
 if MPI.COMM_WORLD.size == 1:  # Skip this plotting in parallel
     for i in range(values.shape[1]):
@@ -113,27 +107,21 @@ if MPI.COMM_WORLD.size == 1:  # Skip this plotting in parallel
 # Elements created using Basix can be used directly with UFL via Basix's
 # UFL wrapper.
 
-ufl_element = basix.ufl.element(
-    basix.ElementFamily.P, basix.CellType.triangle, 3, basix.LagrangeVariant.gll_warped
-)
+ufl_element = basix.ufl.element(basix.ElementFamily.P, basix.CellType.triangle, 3,
+                                basix.LagrangeVariant.gll_warped)
 
 # The UFL element `ufl_element` can be used in the same way as an
 # element created directly in UFL. For example, we could [solve a
 # Poisson problem](demo_poisson) using this element.
 
 # +
-msh = mesh.create_rectangle(
-    comm=MPI.COMM_WORLD,
-    points=((0.0, 0.0), (2.0, 1.0)),
-    n=(32, 16),
-    cell_type=mesh.CellType.triangle,
-)
+msh = mesh.create_rectangle(comm=MPI.COMM_WORLD,
+                            points=((0.0, 0.0), (2.0, 1.0)), n=(32, 16),
+                            cell_type=mesh.CellType.triangle,)
 V = fem.functionspace(msh, ufl_element)
-facets = mesh.locate_entities_boundary(
-    msh,
-    dim=1,
-    marker=lambda x: np.logical_or(np.isclose(x[0], 0.0), np.isclose(x[0], 2.0)),
-)
+facets = mesh.locate_entities_boundary(msh, dim=1,
+                                       marker=lambda x: np.logical_or(np.isclose(x[0], 0.0),
+                                                                      np.isclose(x[0], 2.0)))
 dofs = fem.locate_dofs_topological(V=V, entity_dim=1, entities=facets)
 bc = fem.dirichletbc(value=default_scalar_type(0), dofs=dofs, V=V)
 
@@ -145,9 +133,7 @@ g = ufl.sin(5 * x[0])
 a = inner(grad(u), grad(v)) * dx
 L = inner(f, v) * dx + inner(g, v) * ds
 
-problem = LinearProblem(
-    a, L, bcs=[bc], petsc_options={"ksp_type": "preonly", "pc_type": "lu"}
-)
+problem = LinearProblem(a, L, bcs=[bc], petsc_options={"ksp_type": "preonly", "pc_type": "lu"})
 uh = problem.solve()
 # -
 
@@ -176,9 +162,7 @@ x = ufl.SpatialCoordinate(msh)
 u_exact = saw_tooth(x[0])
 
 for variant in [basix.LagrangeVariant.equispaced, basix.LagrangeVariant.gll_warped]:
-    ufl_element = basix.ufl.element(
-        basix.ElementFamily.P, basix.CellType.interval, 10, variant
-    )
+    ufl_element = basix.ufl.element(basix.ElementFamily.P, basix.CellType.interval, 10, variant)
     V = fem.functionspace(msh, ufl_element)
     uh = fem.Function(V)
     uh.interpolate(lambda x: saw_tooth(x[0]))
@@ -217,15 +201,13 @@ for variant in [basix.LagrangeVariant.equispaced, basix.LagrangeVariant.gll_warp
 
 # +
 for variant in [basix.LagrangeVariant.equispaced, basix.LagrangeVariant.gll_warped]:
-    ufl_element = basix.ufl.element(
-        basix.ElementFamily.P, basix.CellType.interval, 10, variant
-    )
+    ufl_element = basix.ufl.element(basix.ElementFamily.P, basix.CellType.interval, 10, variant)
     V = fem.functionspace(msh, ufl_element)
     uh = fem.Function(V)
     uh.interpolate(lambda x: saw_tooth(x[0]))
-    M = fem.form((u_exact - uh) ** 2 * dx)
+    M = fem.form((u_exact - uh)**2 * dx)
     error = msh.comm.allreduce(fem.assemble_scalar(M), op=MPI.SUM)
-    print(f"Computed L2 interpolation error ({variant.__name__}):", error**0.5)
+    print(f"Computed L2 interpolation error ({variant.__name__}):", error ** 0.5)
 # -
 
 # ## Available Lagrange variants

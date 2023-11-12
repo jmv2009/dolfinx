@@ -17,7 +17,8 @@ import ufl
 from basix.ufl import element, mixed_element
 from dolfinx import default_real_type, la
 from dolfinx.fem import Function, functionspace
-from dolfinx.geometry import bb_tree, compute_colliding_cells, compute_collisions_points
+from dolfinx.geometry import (bb_tree, compute_colliding_cells,
+                              compute_collisions_points)
 from dolfinx.mesh import create_mesh, create_unit_cube
 
 
@@ -28,19 +29,19 @@ def mesh():
 
 @pytest.fixture
 def V(mesh):
-    return functionspace(mesh, ("Lagrange", 1))
+    return functionspace(mesh, ('Lagrange', 1))
 
 
 @pytest.fixture
 def W(mesh):
     gdim = mesh.geometry.dim
-    return functionspace(mesh, ("Lagrange", 1, (gdim,)))
+    return functionspace(mesh, ('Lagrange', 1, (gdim,)))
 
 
 @pytest.fixture
 def Q(mesh):
     gdim = mesh.geometry.dim
-    return functionspace(mesh, ("Lagrange", 1, (gdim, gdim)))
+    return functionspace(mesh, ('Lagrange', 1, (gdim, gdim)))
 
 
 def test_name_argument(W):
@@ -95,18 +96,13 @@ def test_eval(V, W, Q, mesh):
     cell = compute_colliding_cells(mesh, cell_candidates, x0).array
     assert len(cell) > 0
     first_cell = cell[0]
-    assert np.allclose(
-        u3.eval(x0, first_cell)[:3], u2.eval(x0, first_cell), rtol=1e-15, atol=1e-15
-    )
+    assert np.allclose(u3.eval(x0, first_cell)[:3], u2.eval(x0, first_cell), rtol=1e-15, atol=1e-15)
 
 
-@pytest.mark.skip_in_parallel
+@ pytest.mark.skip_in_parallel
 def test_eval_manifold():
     # Simple two-triangle surface in 3d
-    vertices = np.array(
-        [(0.0, 0.0, 1.0), (1.0, 1.0, 1.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)],
-        dtype=default_real_type,
-    )
+    vertices = np.array([(0.0, 0.0, 1.0), (1.0, 1.0, 1.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)], dtype=default_real_type)
     cells = [(0, 1, 2), (0, 1, 3)]
     domain = ufl.Mesh(element("Lagrange", "triangle", 1, gdim=3, shape=(2,)))
     mesh = create_mesh(MPI.COMM_WORLD, cells, vertices, domain)
@@ -177,15 +173,16 @@ def test_interpolation_rank1(W):
     assert round(w.x.norm(la.Norm.l1) - 6 * num_vertices, 7) == 0
 
 
-@pytest.mark.parametrize("types", [(np.float32, "float"), (np.float64, "double")])
+@ pytest.mark.parametrize("types", [
+    (np.float32, "float"),
+    (np.float64, "double")
+])
 def test_cffi_expression(types):
     vtype, xtype = types
     mesh = create_unit_cube(MPI.COMM_WORLD, 3, 3, 3, dtype=vtype)
-    V = functionspace(mesh, ("Lagrange", 1))
+    V = functionspace(mesh, ('Lagrange', 1))
 
-    code_h = (
-        f"void eval({xtype}* values, int num_points, int value_size, const {xtype}* x);"
-    )
+    code_h = f"void eval({xtype}* values, int num_points, int value_size, const {xtype}* x);"
     code_c = """
         void eval(xtype* values, int num_points, int value_size, const xtype* x)
         {
