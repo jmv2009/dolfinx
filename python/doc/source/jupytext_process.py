@@ -53,7 +53,7 @@ def process():
                 os.chdir(demo_dir)
                 try:
                     runpy.run_path(str(demo))
-                except RuntimeError:
+                except SystemExit:
                     pass
                 os.chdir(here)
 
