@@ -23,7 +23,7 @@
 from pathlib import Path
 
 from mpi4py import MPI
-from dolfinx.cpp.common import has_petsc
+from dolfinx import has_petsc
 if not has_petsc:
     print("This demo requires PETSc")
     exit(0)

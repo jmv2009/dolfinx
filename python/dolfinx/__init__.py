@@ -23,7 +23,7 @@ from dolfinx import cpp as _cpp
 from dolfinx import fem, geometry, graph, io, jit, la, log, mesh, nls, plot
 # Initialise logging
 from dolfinx.common import (TimingType, git_commit_hash, has_debug, has_kahip,
-                            has_parmetis, list_timings, timing)
+                            has_parmetis, has_petsc, list_timings, timing)
 from dolfinx.cpp import __version__
 
 _cpp.common.init_logging(sys.argv)
@@ -43,6 +43,6 @@ def get_include(user=False):
 
 __all__ = [
     "fem", "common", "geometry", "graph", "io", "jit", "la", "log", "mesh", "nls", "plot",
-    "TimingType", "git_commit_hash", "has_debug", "has_kahip", "has_parmetis", "list_timings",
-    "timing"
+    "TimingType", "git_commit_hash", "has_debug", "has_kahip", "has_parmetis", "has_petsc",
+    "list_timings", "timing"
 ]

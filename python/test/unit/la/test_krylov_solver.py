@@ -8,7 +8,7 @@
 from contextlib import ExitStack
 
 from mpi4py import MPI
-from dolfinx.cpp.common import has_petsc
+from dolfinx import has_petsc
 import pytest
 
 if not has_petsc:

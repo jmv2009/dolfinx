@@ -18,20 +18,11 @@ import ufl
 from basix.ufl import element, mixed_element
 from dolfinx import cpp as _cpp
 from dolfinx import default_real_type, fem, graph, la
-from dolfinx.fem import (
-    Constant,
-    Function,
-    assemble_scalar,
-    bcs_by_block,
-    dirichletbc,
-    extract_function_spaces,
-    form,
-    functionspace,
-    locate_dofs_geometrical,
-    locate_dofs_topological,
-)
+from dolfinx.fem import (Constant, Function, assemble_scalar, bcs_by_block, dirichletbc,
+                         extract_function_spaces, form, functionspace,
+                         locate_dofs_geometrical, locate_dofs_topological)
 
-from dolfinx.cpp.common import has_petsc
+from dolfinx import has_petsc
 
 if has_petsc:
     from petsc4py import PETSc

@@ -7,7 +7,7 @@
 
 from mpi4py import MPI
 import pytest
-from dolfinx.cpp.common import has_petsc
+from dolfinx import has_petsc
 
 if not has_petsc:
     pytest.skip(allow_module_level=True)

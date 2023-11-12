@@ -30,7 +30,7 @@
 # First of all, let's import the modules that will be used:
 
 # +
-from dolfinx.cpp.common import has_petsc
+from dolfinx import has_petsc
 if not has_petsc:
     print("This demo requires PETSc")
     exit(0)
