@@ -22,7 +22,6 @@
 from mpi4py import MPI
 from dolfinx import has_petsc
 if has_petsc:
-    from petsc4py import PETSc # noqa
     from dolfinx.fem.petsc import LinearProblem
 else:
     from dolfinx.fem.solver import LinearProblem
