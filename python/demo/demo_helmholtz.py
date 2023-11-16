@@ -21,19 +21,19 @@
 
 from mpi4py import MPI
 from dolfinx import has_petsc
-if not has_petsc:
-    print("This demo requires PETSc")
-    exit(0)
-
-from petsc4py import PETSc
+if has_petsc:
+    from petsc4py import PETSc # noqa
+    from dolfinx.fem.petsc import LinearProblem
+else:
+    from dolfinx.fem.solver import LinearProblem
 
 # +
 import numpy as np
 
 import ufl
 from dolfinx.fem import Function, assemble_scalar, form, functionspace
-from dolfinx.fem.petsc import LinearProblem
 from dolfinx.io import XDMFFile
+import dolfinx
 from dolfinx.mesh import create_unit_square
 from ufl import dx, grad, inner
 
@@ -50,8 +50,8 @@ msh = create_unit_square(MPI.COMM_WORLD, n_elem, n_elem)
 n = ufl.FacetNormal(msh)
 
 # Source amplitude
-if np.issubdtype(PETSc.ScalarType, np.complexfloating):  # type: ignore
-    A = PETSc.ScalarType(1 + 1j)  # type: ignore
+if np.issubdtype(dolfinx.default_scalar_type, np.complexfloating):  # type: ignore
+    A = dolfinx.default_scalar_type(1 + 1j)  # type: ignore
 else:
     A = 1
 
@@ -68,7 +68,11 @@ L = inner(f, v) * dx
 # Compute solution
 uh = Function(V)
 uh.name = "u"
-problem = LinearProblem(a, L, u=uh, petsc_options={"ksp_type": "preonly", "pc_type": "lu"})
+if has_petsc:
+    problem = LinearProblem(a, L, u=uh, petsc_options={"ksp_type": "preonly", "pc_type": "lu"})
+else:
+    problem = LinearProblem(a, L, u=uh)
+
 problem.solve()
 
 # Save solution in XDMF format (to be viewed in ParaView, for example)

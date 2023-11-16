@@ -62,18 +62,20 @@
 
 from mpi4py import MPI
 from dolfinx import has_petsc
-if not has_petsc:
-    print("This demo requires PETSc")
-    exit(0)
 
-from petsc4py.PETSc import ScalarType  # type: ignore
+from dolfinx import default_scalar_type  # type: ignore
 
 # +
 import numpy as np
 
 import ufl
 from dolfinx import fem, io, mesh, plot
-from dolfinx.fem.petsc import LinearProblem
+
+if has_petsc:
+    from dolfinx.fem.petsc import LinearProblem
+else:
+    from dolfinx.fem.solver import LinearProblem
+
 from ufl import ds, dx, grad, inner
 
 # -
@@ -120,7 +122,7 @@ dofs = fem.locate_dofs_topological(V=V, entity_dim=1, entities=facets)
 # {py:class}`DirichletBC <dolfinx.fem.DirichletBC>` class that
 # represents the boundary condition:
 
-bc = fem.dirichletbc(value=ScalarType(0), dofs=dofs, V=V)
+bc = fem.dirichletbc(value=default_scalar_type(0), dofs=dofs, V=V)
 
 # Next, the variational problem is defined:
 
@@ -141,8 +143,13 @@ L = inner(f, v) * dx + inner(g, v) * ds
 # <dolfinx.fem.petsc.LinearProblem.solve>` computes the solution.
 
 # +
-problem = LinearProblem(a, L, bcs=[bc], petsc_options={"ksp_type": "preonly", "pc_type": "lu"})
+if has_petsc:
+    problem = LinearProblem(a, L, bcs=[bc], petsc_options={"ksp_type": "preonly", "pc_type": "lu"})
+else:
+    problem = LinearProblem(a, L, bcs=[bc])
+
 uh = problem.solve()
+
 # -
 
 # The solution can be written to a {py:class}`XDMFFile
