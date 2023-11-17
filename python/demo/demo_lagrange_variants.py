@@ -19,9 +19,11 @@
 
 from mpi4py import MPI
 from dolfinx import has_petsc
-if not has_petsc:
-    print("This demo requires PETSc")
-    exit(0)
+if has_petsc:
+    from dolfinx.fem.petsc import LinearProblem
+else:
+    from dolfinx.fem.solver import LinearProblem
+
 # +
 import matplotlib.pylab as plt
 import numpy as np
@@ -30,7 +32,6 @@ import basix
 import basix.ufl
 import ufl
 from dolfinx import default_scalar_type, fem, mesh
-from dolfinx.fem.petsc import LinearProblem
 from ufl import ds, dx, grad, inner
 
 # -
@@ -133,7 +134,11 @@ g = ufl.sin(5 * x[0])
 a = inner(grad(u), grad(v)) * dx
 L = inner(f, v) * dx + inner(g, v) * ds
 
-problem = LinearProblem(a, L, bcs=[bc], petsc_options={"ksp_type": "preonly", "pc_type": "lu"})
+if has_petsc:
+    problem = LinearProblem(a, L, bcs=[bc], petsc_options={"ksp_type": "preonly", "pc_type": "lu"})
+else:
+    problem = LinearProblem(a, L, bcs=[bc])
+
 uh = problem.solve()
 # -
 

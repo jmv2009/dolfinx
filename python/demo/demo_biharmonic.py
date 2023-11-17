@@ -110,18 +110,18 @@
 
 from mpi4py import MPI
 from dolfinx import has_petsc
-if not has_petsc:
-    print("This demo requires PETSc")
-    exit(0)
+if has_petsc:
+    from dolfinx.fem.petsc import LinearProblem
+else:
+    from dolfinx.fem.solver import LinearProblem
 
-from petsc4py.PETSc import ScalarType  # type: ignore
+from dolfinx import default_scalar_type  # type: ignore
 
 # +
 import numpy as np
 
 import ufl
 from dolfinx import fem, io, mesh, plot
-from dolfinx.fem.petsc import LinearProblem
 from dolfinx.mesh import CellType, GhostMode
 from ufl import (CellDiameter, FacetNormal, avg, div, dS, dx, grad, inner,
                  jump, pi, sin)
@@ -172,7 +172,7 @@ dofs = fem.locate_dofs_topological(V=V, entity_dim=1, entities=facets)
 # Dirichlet boundary conditions with value $0$ on the entire boundary
 # $\partial\Omega$.
 
-bc = fem.dirichletbc(value=ScalarType(0), dofs=dofs, V=V)
+bc = fem.dirichletbc(value=default_scalar_type(0), dofs=dofs, V=V)
 
 # Next, we express the variational problem using UFL.
 #
@@ -184,7 +184,7 @@ bc = fem.dirichletbc(value=ScalarType(0), dofs=dofs, V=V)
 # `('+')` and `('-')` restricts a function to the `('+')` and `('-')`
 # sides of a facet.
 
-alpha = ScalarType(8.0)
+alpha = default_scalar_type(8.0)
 h = CellDiameter(msh)
 n = FacetNormal(msh)
 h_avg = (h('+') + h('-')) / 2.0
@@ -218,7 +218,11 @@ L = inner(f, v) * dx
 # case we use a direct (LU) solver. The {py:func}`solve
 # <dolfinx.fem.petsc.LinearProblem.solve>` will compute a solution.
 
-problem = LinearProblem(a, L, bcs=[bc], petsc_options={"ksp_type": "preonly", "pc_type": "lu"})
+if has_petsc:
+    problem = LinearProblem(a, L, bcs=[bc], petsc_options={"ksp_type": "preonly", "pc_type": "lu"})
+else:
+    problem = LinearProblem(a, L, bcs=[bc])
+
 uh = problem.solve()
 
 # The solution can be written to a  {py:class}`XDMFFile

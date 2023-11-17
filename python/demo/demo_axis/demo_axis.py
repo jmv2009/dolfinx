@@ -14,24 +14,33 @@
 # Import the modules that will be used:
 
 # +
-from dolfinx import has_petsc
-if not has_petsc:
-    print("This demo requires PETSc")
-    exit(0)
+from dolfinx import has_petsc, default_scalar_type
+import numpy as np
+
+if has_petsc:
+    from dolfinx.fem.petsc import LinearProblem
+    # The time-harmonic Maxwell equation is complex-valued PDE. PETSc must
+    # therefore have compiled with complex scalars.
+    if not np.issubdtype(default_scalar_type, np.complexfloating):
+        print("Demo should be executed with PETSc complex mode")
+        exit(0)
+    complex_dtype = default_scalar_type
+else:
+    # Using scipy to solve in serial
+    from dolfinx.fem.solver import LinearProblem
+    complex_dtype = np.complex128
 
 import sys
 from functools import partial
 
 from mpi4py import MPI
 
-import numpy as np
 from mesh_sphere_axis import generate_mesh_sphere_axis
 from scipy.special import jv, jvp
 
 import ufl
 from basix.ufl import element, mixed_element
-from dolfinx import default_scalar_type, fem, io, mesh, plot
-from dolfinx.fem.petsc import LinearProblem
+from dolfinx import fem, io, mesh, plot
 
 try:
     from dolfinx.io import VTXWriter
@@ -54,12 +63,6 @@ except ModuleNotFoundError:
     have_pyvista = False
 # -
 
-# The time-harmonic Maxwell equation is complex-valued PDE. PETSc must
-# therefore have compiled with complex scalars.
-
-if not np.issubdtype(default_scalar_type, np.complexfloating):
-    print("Demo should only be executed with DOLFINx complex mode")
-    exit(0)
 
 # ## Problem formulation
 #
@@ -395,7 +398,7 @@ eps_bkg = n_bkg**2  # Background relative permittivity
 eps_au = -1.0782 + 1j * 5.8089
 
 D = fem.functionspace(msh, ("DG", 0))
-eps = fem.Function(D)
+eps = fem.Function(D, dtype=complex_dtype)
 au_cells = cell_tags.find(au_tag)
 bkg_cells = cell_tags.find(bkg_tag)
 eps.x.array[au_cells] = np.full_like(au_cells, eps_au, dtype=eps.x.array.dtype)
@@ -451,8 +454,8 @@ eps_pml, mu_pml = create_eps_mu(pml_coords, rho, eps_bkg, 1)
 
 # +
 # Total field
-Eh_m = fem.Function(V)
-Esh = fem.Function(V)
+Eh_m = fem.Function(V, dtype=complex_dtype)
+Esh = fem.Function(V, dtype=complex_dtype)
 
 n = ufl.FacetNormal(msh)
 n_3d = ufl.as_vector((n[0], n[1], 0))
@@ -461,7 +464,7 @@ n_3d = ufl.as_vector((n[0], n[1], 0))
 gcs = np.pi * radius_sph**2
 
 # Marker functions for the scattering efficiency integral
-marker = fem.Function(D)
+marker = fem.Function(D, dtype=complex_dtype)
 scatt_facets = facet_tags.find(scatt_tag)
 incident_cells = mesh.compute_incident_entities(msh.topology, scatt_facets,
                                                 msh.topology.dim - 1,
@@ -496,7 +499,7 @@ dS = ufl.Measure("dS", msh, subdomain_data=facet_tags)
 phi = np.pi / 4
 
 # Initialize phase term
-phase = fem.Constant(msh, default_scalar_type(np.exp(1j * 0 * phi)))
+phase = fem.Constant(msh, np.exp(1j * 0 * phi))
 # -
 
 # We now solve the problem:
@@ -507,7 +510,7 @@ for m in m_list:
     v_m = ufl.TestFunction(V)
 
     # Background field
-    Eb_m = fem.Function(V)
+    Eb_m = fem.Function(V, dtype=complex_dtype)
     f_rz = partial(background_field_rz, theta, n_bkg, k0, m)
     f_p = partial(background_field_p, theta, n_bkg, k0, m)
     Eb_m.sub(0).interpolate(f_rz)
@@ -523,8 +526,13 @@ for m in m_list:
         + k0 ** 2 * ufl.inner(eps_pml * Es_m, v_m) * rho * dPml
     a, L = ufl.lhs(F), ufl.rhs(F)
 
-    problem = LinearProblem(a, L, bcs=[], petsc_options={"ksp_type": "preonly", "pc_type": "lu"})
-    Esh_m = problem.solve()
+    Esh_m = fem.Function(V, dtype=complex_dtype)
+    if has_petsc:
+        problem = LinearProblem(a, L, bcs=[], u=Esh_m, petsc_options={"ksp_type": "preonly", "pc_type": "lu"})
+    else:
+        problem = LinearProblem(a, L, bcs=[], u=Esh_m, dtype=complex_dtype)
+
+    problem.solve()
 
     # Scattered magnetic field
     Hsh_m = -1j * curl_axis(Esh_m, m, rho) / (Z0 * k0)
@@ -555,22 +563,25 @@ for m in m_list:
     if m == 0:  # initialize and do not add 2 factor
         P = np.pi * ufl.inner(-ufl.cross(Esh_m, ufl.conj(Hsh_m)), n_3d) * marker
         Q = np.pi * eps_au.imag * k0 * (ufl.inner(Eh_m, Eh_m)) / Z0
-        q_abs_fenics_proc = (fem.assemble_scalar(fem.form(Q * rho * dAu)) / gcs / I0).real
-        q_sca_fenics_proc = (fem.assemble_scalar(fem.form((P('+') + P('-')) * rho * dS(scatt_tag))) / gcs / I0).real
+        q_abs_fenics_proc = (fem.assemble_scalar(fem.form(Q * rho * dAu, dtype=complex_dtype)) / gcs / I0).real
+        q_sca_fenics_proc = (fem.assemble_scalar(fem.form((P('+') + P('-')) * rho * dS(scatt_tag),
+                                                          dtype=complex_dtype)) / gcs / I0).real
         q_abs_fenics = msh.comm.allreduce(q_abs_fenics_proc, op=MPI.SUM)
         q_sca_fenics = msh.comm.allreduce(q_sca_fenics_proc, op=MPI.SUM)
     elif m == m_list[0]:  # initialize and add 2 factor
         P = 2 * np.pi * ufl.inner(-ufl.cross(Esh_m, ufl.conj(Hsh_m)), n_3d) * marker
         Q = 2 * np.pi * eps_au.imag * k0 * (ufl.inner(Eh_m, Eh_m)) / Z0 / n_bkg
-        q_abs_fenics_proc = (fem.assemble_scalar(fem.form(Q * rho * dAu)) / gcs / I0).real
-        q_sca_fenics_proc = (fem.assemble_scalar(fem.form((P('+') + P('-')) * rho * dS(scatt_tag))) / gcs / I0).real
+        q_abs_fenics_proc = (fem.assemble_scalar(fem.form(Q * rho * dAu, dtype=complex_dtype)) / gcs / I0).real
+        q_sca_fenics_proc = (fem.assemble_scalar(fem.form((P('+') + P('-')) * rho * dS(scatt_tag),
+                                                          dtype=complex_dtype)) / gcs / I0).real
         q_abs_fenics = msh.comm.allreduce(q_abs_fenics_proc, op=MPI.SUM)
         q_sca_fenics = msh.comm.allreduce(q_sca_fenics_proc, op=MPI.SUM)
     else:  # do not initialize and add 2 factor
         P = 2 * np.pi * ufl.inner(-ufl.cross(Esh_m, ufl.conj(Hsh_m)), n_3d) * marker
         Q = 2 * np.pi * eps_au.imag * k0 * (ufl.inner(Eh_m, Eh_m)) / Z0 / n_bkg
-        q_abs_fenics_proc = (fem.assemble_scalar(fem.form(Q * rho * dAu)) / gcs / I0).real
-        q_sca_fenics_proc = (fem.assemble_scalar(fem.form((P('+') + P('-')) * rho * dS(scatt_tag))) / gcs / I0).real
+        q_abs_fenics_proc = (fem.assemble_scalar(fem.form(Q * rho * dAu, dtype=complex_dtype)) / gcs / I0).real
+        q_sca_fenics_proc = (fem.assemble_scalar(fem.form((P('+') + P('-')) * rho * dS(scatt_tag),
+                                                          dtype=complex_dtype)) / gcs / I0).real
         q_abs_fenics += msh.comm.allreduce(q_abs_fenics_proc, op=MPI.SUM)
         q_sca_fenics += msh.comm.allreduce(q_sca_fenics_proc, op=MPI.SUM)
 
@@ -590,7 +601,7 @@ q_ext_fenics = q_abs_fenics + q_sca_fenics
 # m = np.sqrt(eps_au)/n_bkg
 # x = 2*np.pi*radius_sph/wl0*n_bkg
 #
-# q_sca_analyt, q_abs_analyt = scattnlay(np.array([x], dtype=np.complex128), np.array([m], dtype=np.complex128))[2:4]
+# q_sca_analyt, q_abs_analyt = scattnlay(np.array([x], dtype=complex_dtype), np.array([m], dtype=complex_dtype))[2:4]
 # ```
 #
 # The numerical values are reported here below:
@@ -632,7 +643,7 @@ if MPI.COMM_WORLD.rank == 0:
 if has_vtx:
     v_dg_el = element("DG", msh.basix_cell(), degree, shape=(3, ))
     W = fem.functionspace(msh, v_dg_el)
-    Es_dg = fem.Function(W)
+    Es_dg = fem.Function(W, dtype=complex_dtype)
     Es_expr = fem.Expression(Esh, W.element.interpolation_points())
     Es_dg.interpolate(Es_expr)
     with VTXWriter(msh.comm, "sols/Es.bp", Es_dg) as f:

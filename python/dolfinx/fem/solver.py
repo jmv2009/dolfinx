@@ -3,6 +3,7 @@ import typing
 from scipy.sparse.linalg import spsolve
 
 import ufl
+from dolfinx import default_scalar_type
 from dolfinx.fem import assemble_matrix, assemble_vector, apply_lifting, set_bc
 from dolfinx.fem.bcs import DirichletBC
 from dolfinx.fem.forms import form as _create_form
@@ -17,6 +18,7 @@ class LinearProblem:
 
     def __init__(self, a: ufl.Form, L: ufl.Form, bcs: typing.List[DirichletBC] = [],
                  u: typing.Optional[_Function] = None,
+                 dtype=default_scalar_type,
                  form_compiler_options: typing.Optional[dict] = None,
                  jit_options: typing.Optional[dict] = None):
         """Initialize solver for a linear variational problem.
@@ -40,9 +42,9 @@ class LinearProblem:
 
             problem = LinearProblem(a, L, [bc0, bc1])
         """
-        self._a = _create_form(a, form_compiler_options=form_compiler_options, jit_options=jit_options)
+        self._a = _create_form(a, dtype=dtype, form_compiler_options=form_compiler_options, jit_options=jit_options)
         self._A = None
-        self._L = _create_form(L, form_compiler_options=form_compiler_options, jit_options=jit_options)
+        self._L = _create_form(L, dtype=dtype, form_compiler_options=form_compiler_options, jit_options=jit_options)
         self._b = None
 
         if self._a.mesh.comm.size > 1:
