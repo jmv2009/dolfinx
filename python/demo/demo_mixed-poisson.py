@@ -95,8 +95,6 @@ else:
         print("Need to use PETSc in parallel")
         exit(0)
 
-
-
 import numpy as np
 
 from basix.ufl import element, mixed_element
