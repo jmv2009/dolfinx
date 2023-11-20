@@ -22,9 +22,10 @@
 
 from mpi4py import MPI
 from dolfinx import has_petsc
-if not has_petsc:
-    print("This demo requires PETSc")
-    exit(0)
+if has_petsc:
+    from dolfinx.fem.petsc import LinearProblem
+else:
+    from dolfinx.fem.solver import LinearProblem  # type: ignore
 
 # +
 import matplotlib
@@ -34,7 +35,6 @@ import numpy as np
 import basix
 import basix.ufl
 from dolfinx import fem, mesh
-from dolfinx.fem.petsc import LinearProblem
 from ufl import (SpatialCoordinate, TestFunction, TrialFunction, cos, div, dx,
                  grad, inner, sin)
 
@@ -241,7 +241,10 @@ def poisson_error(V: fem.FunctionSpace):
     bc = fem.dirichletbc(u_bc, bdofs)
 
     # Solve
-    problem = LinearProblem(a, L, bcs=[bc], petsc_options={"ksp_rtol": 1e-12})
+    if has_petsc:
+        problem = LinearProblem(a, L, bcs=[bc], petsc_options={"ksp_rtol": 1e-12})
+    else:
+        problem = LinearProblem(a, L, bcs=[bc])
     uh = problem.solve()
 
     M = (u_exact - uh)**2 * dx
