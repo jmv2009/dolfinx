@@ -163,7 +163,7 @@ class Expression:
         elif len(arguments) == 1:
             self._argument_function_space = arguments[0].ufl_function_space()._cpp_object
         else:
-            raise RuntimeError("Expressions with more that one Argument not allowed.")
+            raise RuntimeError("Expressions with more than one Argument not allowed.")
 
         def _create_expression(dtype):
             if dtype == np.float32:

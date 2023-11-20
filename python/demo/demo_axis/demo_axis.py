@@ -503,7 +503,7 @@ dS = ufl.Measure("dS", msh, subdomain_data=facet_tags)
 phi = np.pi / 4
 
 # Initialize phase term
-phase = fem.Constant(msh, np.exp(1j * 0 * phi))
+phase = fem.Constant(msh, np.exp(1j * 0 * phi, dtype=complex_dtype))
 # -
 
 # We now solve the problem:
