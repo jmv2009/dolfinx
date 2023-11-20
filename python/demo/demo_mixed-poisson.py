@@ -88,10 +88,10 @@ from mpi4py import MPI
 from dolfinx import has_petsc
 if has_petsc:
     from dolfinx.fem.petsc import LinearProblem
+    from petsc4py import PETSc
 else:
     from dolfinx.fem.solver import LinearProblem  # type: ignore
 
-from petsc4py import PETSc
 
 import numpy as np
 
@@ -156,18 +156,19 @@ bcs = [bc_top, bc_bottom]
 if has_petsc:
     problem = LinearProblem(a, L, bcs=bcs, petsc_options={"ksp_type": "preonly", "pc_type": "lu",
                                                           "pc_factor_mat_solver_type": "mumps"})
+    try:
+        w_h = problem.solve()
+    except PETSc.Error as e:  # type: ignore
+        if e.ierr == 92:
+            print("The required PETSc solver/preconditioner is not available. Exiting.")
+            print(e)
+            exit(0)
+        else:
+            raise e
+
 else:
     problem = LinearProblem(a, L, bcs=bcs)
-
-try:
     w_h = problem.solve()
-except PETSc.Error as e:  # type: ignore
-    if e.ierr == 92:
-        print("The required PETSc solver/preconditioner is not available. Exiting.")
-        print(e)
-        exit(0)
-    else:
-        raise e
 
 sigma_h, u_h = w_h.split()
 
