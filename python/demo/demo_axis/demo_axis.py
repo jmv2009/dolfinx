@@ -649,7 +649,7 @@ if has_vtx:
     W = fem.functionspace(msh, v_dg_el)
     Es_dg = fem.Function(W, dtype=complex_dtype)
     print(Esh, type(Esh), W.element.interpolation_points().dtype, complex_dtype)
-    pts = W.element.interpolation_points().as_type(default_real_type)
+    pts = W.element.interpolation_points().astype(default_real_type)
     Es_expr = fem.Expression(Esh, pts, dtype=complex_dtype)
     Es_dg.interpolate(Es_expr)
     with VTXWriter(msh.comm, "sols/Es.bp", Es_dg) as f:
