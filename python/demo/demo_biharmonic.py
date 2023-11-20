@@ -113,7 +113,7 @@ from dolfinx import has_petsc
 if has_petsc:
     from dolfinx.fem.petsc import LinearProblem
 else:
-    from dolfinx.fem.solver import LinearProblem
+    from dolfinx.fem.solver import LinearProblem # type: ignore
 
 from dolfinx import default_scalar_type  # type: ignore
 

@@ -27,7 +27,7 @@ if has_petsc:
     complex_dtype = default_scalar_type
 else:
     # Using scipy to solve in serial
-    from dolfinx.fem.solver import LinearProblem
+    from dolfinx.fem.solver import LinearProblem # type: ignore
     complex_dtype = np.complex128
 
 import sys
@@ -530,7 +530,7 @@ for m in m_list:
     if has_petsc:
         problem = LinearProblem(a, L, bcs=[], u=Esh_m, petsc_options={"ksp_type": "preonly", "pc_type": "lu"})
     else:
-        problem = LinearProblem(a, L, bcs=[], u=Esh_m, dtype=complex_dtype)
+        problem = LinearProblem(a, L, bcs=[], u=Esh_m, dtype=complex_dtype) # type: ignore
 
     problem.solve()
 

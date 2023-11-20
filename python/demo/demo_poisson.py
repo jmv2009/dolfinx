@@ -74,7 +74,7 @@ from dolfinx import fem, io, mesh, plot
 if has_petsc:
     from dolfinx.fem.petsc import LinearProblem
 else:
-    from dolfinx.fem.solver import LinearProblem
+    from dolfinx.fem.solver import LinearProblem # type: ignore
 
 from ufl import ds, dx, grad, inner
 

@@ -22,7 +22,7 @@ from dolfinx import has_petsc
 if has_petsc:
     from dolfinx.fem.petsc import LinearProblem
 else:
-    from dolfinx.fem.solver import LinearProblem
+    from dolfinx.fem.solver import LinearProblem # type: ignore
 
 # +
 import matplotlib.pylab as plt
