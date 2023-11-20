@@ -14,6 +14,7 @@
 # Import the modules that will be used:
 
 # +
+from mpi4py import MPI
 from dolfinx import has_petsc, default_scalar_type
 import numpy as np
 
@@ -26,6 +27,10 @@ if has_petsc:
         exit(0)
     complex_dtype = default_scalar_type
 else:
+    if MPI.COMM_WORLD.size > 1:
+        print("Need to use PETSc in parallel")
+        exit(0)
+
     # Using scipy to solve in serial
     from dolfinx.fem.solver import LinearProblem  # type: ignore
     from dolfinx import default_real_type
@@ -37,7 +42,6 @@ else:
 import sys
 from functools import partial
 
-from mpi4py import MPI
 
 from mesh_sphere_axis import generate_mesh_sphere_axis
 from scipy.special import jv, jvp

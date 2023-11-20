@@ -91,6 +91,10 @@ if has_petsc:
     from petsc4py import PETSc
 else:
     from dolfinx.fem.solver import LinearProblem  # type: ignore
+    if MPI.COMM_WORLD.size > 1:
+        print("Need to use PETSc in parallel")
+        exit(0)
+
 
 
 import numpy as np
