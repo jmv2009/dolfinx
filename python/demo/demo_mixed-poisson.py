@@ -86,9 +86,10 @@
 
 from mpi4py import MPI
 from dolfinx import has_petsc
-if not has_petsc:
-    print("This demo requires PETSc")
-    exit(0)
+if has_petsc:
+    from dolfinx.fem.petsc import LinearProblem
+else:
+    from dolfinx.fem.solver import LinearProblem  # type: ignore
 
 from petsc4py import PETSc
 
@@ -96,7 +97,6 @@ import numpy as np
 
 from basix.ufl import element, mixed_element
 from dolfinx import fem, io, mesh
-from dolfinx.fem.petsc import LinearProblem
 from ufl import (Measure, SpatialCoordinate, TestFunctions, TrialFunctions,
                  div, exp, inner)
 
@@ -153,8 +153,12 @@ bc_bottom = fem.dirichletbc(f_h2, dofs_bottom, V.sub(0))
 
 bcs = [bc_top, bc_bottom]
 
-problem = LinearProblem(a, L, bcs=bcs, petsc_options={"ksp_type": "preonly", "pc_type": "lu",
-                                                      "pc_factor_mat_solver_type": "mumps"})
+if has_petsc:
+    problem = LinearProblem(a, L, bcs=bcs, petsc_options={"ksp_type": "preonly", "pc_type": "lu",
+                                                          "pc_factor_mat_solver_type": "mumps"})
+else:
+    problem = LinearProblem(a, L, bcs=bcs)
+
 try:
     w_h = problem.solve()
 except PETSc.Error as e:  # type: ignore

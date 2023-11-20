@@ -28,7 +28,11 @@ if has_petsc:
 else:
     # Using scipy to solve in serial
     from dolfinx.fem.solver import LinearProblem  # type: ignore
-    complex_dtype = np.complex128
+    from dolfinx import default_real_type
+    if default_real_type == np.float32:
+        complex_dtype = np.complex64
+    else:
+        complex_dtype = np.complex128
 
 import sys
 from functools import partial
