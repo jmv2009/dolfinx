@@ -160,7 +160,7 @@ build_basic_dofmap(
   {
     for (auto e : element_dof_layouts)
     {
-      for (int d = 0; d <= D; ++d)
+      for (std::size_t d = 0; d <= D; ++d)
       {
         if (e.num_entity_dofs(d) > 1)
           throw std::runtime_error("Mixed topology: dofmapbuilder does not yet "
@@ -170,10 +170,9 @@ build_basic_dofmap(
     }
 
     std::array<int, 3> nd;
-    for (int d = 0; d < D; ++d)
-      nd[d] = element_dof_layouts[0].num_entity_dofs(d);
-    for (int d = 0; d < D; ++d)
+    for (std::size_t d = 0; d < D; ++d)
     {
+      nd[d] = element_dof_layouts[0].num_entity_dofs(d);
       for (std::size_t i = 1; i < element_dof_layouts.size(); ++i)
       {
         if (element_dof_layouts[i].num_entity_dofs(d) != nd[d])
@@ -189,7 +188,7 @@ build_basic_dofmap(
   // Generate and number required mesh entities
   std::vector<std::int8_t> needs_entities(D + 1, false);
   std::vector<std::int32_t> num_mesh_entities_local(D + 1, 0);
-  for (int d = 0; d <= D; ++d)
+  for (std::size_t d = 0; d <= D; ++d)
   {
     // FIXME: Mixed-topology - P2/Q2 - Q has dof on interior, P does not - need
     // to check all elements here.
@@ -209,7 +208,7 @@ build_basic_dofmap(
   // Collect cell -> entity connectivities
   std::vector<std::shared_ptr<const graph::AdjacencyList<std::int32_t>>>
       connectivity;
-  for (int d = 0; d <= D; ++d)
+  for (std::size_t d = 0; d <= D; ++d)
     connectivity.push_back(topology.connectivity(D, d));
 
   // Number of dofs on this process
@@ -303,7 +302,7 @@ build_basic_dofmap(
   // Storage for local-to-global map
   std::vector<std::int64_t> local_to_global(local_size);
 
-  for (int d = 0; d <= D; ++d)
+  for (std::size_t d = 0; d <= D; ++d)
   {
     if (needs_entities[d])
     {
