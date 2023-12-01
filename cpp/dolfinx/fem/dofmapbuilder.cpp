@@ -314,37 +314,30 @@ build_basic_dofmap(
       // for regular, and later for ghosts).
       const int elem = i % nelem;
       std::int32_t offset_local = 0;
-      for (auto e_dofs_d = entity_dofs[elem].begin();
-           e_dofs_d != entity_dofs[elem].end(); ++e_dofs_d)
+      for (std::size_t d = 0; d < entity_dofs[elem].size(); ++d)
       {
-        const std::size_t d
-            = std::distance(entity_dofs[elem].begin(), e_dofs_d);
+        const std::vector<std::vector<int>>& e_dofs_d = entity_dofs[elem][d];
 
         // Iterate over each entity of current dimension d
-        for (auto e_dofs = e_dofs_d->begin(); e_dofs != e_dofs_d->end();
-             ++e_dofs)
+        const std::size_t num_entity_dofs = e_dofs_d[0].size();
+        for (std::size_t e = 0; e < e_dofs_d.size(); ++e)
         {
+          assert(e_dofs_d[e].size() == num_entity_dofs);
           // Get entity indices (local to cell, local to process, and
           // global)
-          const std::size_t e = std::distance(e_dofs_d->begin(), e_dofs);
           const std::int32_t e_index_local = entity_indices_local[d][e];
 
           // Loop over dofs belong to entity e of dimension d (d, e)
           // d: topological dimension
           // e: local entity index
           // dof_local: local index of dof at (d, e)
-          const std::size_t num_entity_dofs = e_dofs->size();
-          for (auto dof_local = e_dofs->begin(); dof_local != e_dofs->end();
-               ++dof_local)
+          for (std::size_t i = 0; i < num_entity_dofs; ++i)
           {
-            std::size_t count = std::distance(e_dofs->begin(), dof_local);
-            std::int32_t dof
-                = offset_local + num_entity_dofs * e_index_local + count;
-            dofs_c[*dof_local] = dof;
+            dofs_c[e_dofs_d[e][i]]
+                = offset_local + num_entity_dofs * e_index_local + i;
           }
         }
-        offset_local
-            += entity_dofs[elem][d][0].size() * num_mesh_entities_local[d];
+        offset_local += num_entity_dofs * num_mesh_entities_local[d];
       }
     }
   }
