@@ -221,7 +221,7 @@ build_basic_dofmap(
     local_size += n * element_dof_layouts[0].num_entity_dofs(d++);
 
   // Allocate dofmap memory
-  const int num_cells = topology.connectivity(D, 0)->num_nodes();
+  const int num_cells = connectivity[0]->num_nodes();
   const std::vector<int>& group_offsets = topology.entity_group_offsets(D);
 
   std::vector<std::int32_t> doffsets;
@@ -608,7 +608,7 @@ fem::build_dofmap_data(
 {
   common::Timer t0("Build dofmap data");
 
-  const int D = topology.dim();
+  const std::size_t D = topology.dim();
 
   // Build a simple dofmap based on mesh entity numbering, returning (i)
   // a local dofmap, (ii) local-to-global map for dof indices, and (iii)
