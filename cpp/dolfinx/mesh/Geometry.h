@@ -38,7 +38,7 @@ public:
   /// @brief Constructor of object that holds mesh geometry data.
   ///
   /// @param[in] index_map Index map associated with the geometry dofmap
-  /// @param[in] dofmaps The geometry (point) dofmaps. For a cell, it
+  /// @param[in] dofmap The geometry (point) dofmap. For a cell, it
   /// gives the position in the point array of each local geometry node
   /// @param[in] elements The elements that describes the cell geometry
   /// maps
@@ -54,15 +54,14 @@ public:
                                            std::vector<T>>
                  and std::is_convertible_v<std::remove_cvref_t<W>,
                                            std::vector<std::int64_t>>
-  Geometry(std::shared_ptr<const common::IndexMap> index_map,
-           std::vector<U>& dofmaps,
+  Geometry(std::shared_ptr<const common::IndexMap> index_map, U&& dofmap,
            const std::vector<fem::CoordinateElement<
                typename
 
                std::remove_reference_t<typename V::value_type>>>& elements,
            V&& x, int dim, W&& input_global_indices)
-      : _dim(dim), _dofmaps(dofmaps), _index_map(index_map), _cmaps(elements),
-        _x(std::forward<V>(x)),
+      : _dim(dim), _dofmap(std::forward<U>(dofmap)), _index_map(index_map),
+        _cmaps(elements), _x(std::forward<V>(x)),
         _input_global_indices(std::forward<W>(input_global_indices))
   {
     assert(_x.size() % 3 == 0);
@@ -94,22 +93,11 @@ public:
       MDSPAN_IMPL_STANDARD_NAMESPACE::dextents<std::size_t, 2>>
   dofmap() const
   {
-    // TODO: remove - compatibility for "single dofmap" (non-mixed topology)
-    return dofmap(0);
-  }
-
-  /// DOF map
-  MDSPAN_IMPL_STANDARD_NAMESPACE::mdspan<
-      const std::int32_t,
-      MDSPAN_IMPL_STANDARD_NAMESPACE::dextents<std::size_t, 2>>
-  dofmap(std::size_t i) const
-  {
-    assert(i < _dofmaps.size());
-    int ndofs = _cmaps[i].dim();
+    int ndofs = _cmaps[0].dim();
     return MDSPAN_IMPL_STANDARD_NAMESPACE::mdspan<
         const std::int32_t,
         MDSPAN_IMPL_STANDARD_NAMESPACE::dextents<std::size_t, 2>>(
-        _dofmaps[i].data(), _dofmaps[i].size() / ndofs, ndofs);
+        _dofmap.data(), _dofmap.size() / ndofs, ndofs);
   }
 
   /// Index map
@@ -150,8 +138,7 @@ private:
   int _dim;
 
   // Map per cell for extracting coordinate data
-  // for each cell
-  std::vector<std::vector<std::int32_t>> _dofmaps;
+  std::vector<std::int32_t> _dofmap;
 
   // IndexMap for geometry 'dofmap'
   std::shared_ptr<const common::IndexMap> _index_map;
@@ -210,8 +197,6 @@ create_geometry(
       = fem::build_dofmap_data(comm, topology, dof_layouts, reorder_fn);
   auto dof_index_map
       = std::make_shared<common::IndexMap>(std::move(_dof_index_map));
-
-  std::vector<std::vector<std::int32_t>> dofmaps = {dofmap};
 
   // If the mesh has higher order geometry, permute the dofmap
   if (elements[0].needs_dof_permutations())
@@ -278,7 +263,8 @@ create_geometry(
   }
 
   return Geometry<typename std::remove_reference_t<typename U::value_type>>(
-      dof_index_map, dofmaps, elements, std::move(xg), dim, std::move(igi));
+      dof_index_map, std::move(dofmap), elements, std::move(xg), dim,
+      std::move(igi));
 }
 
 /// @brief Create a sub-geometry for a subset of entities.
@@ -404,9 +390,9 @@ create_subgeometry(const Topology& topology, const Geometry<T>& geometry,
                  [&igi](std::int32_t sub_x_dof) { return igi[sub_x_dof]; });
 
   // Create geometry
-  std::vector<std::vector<std::int32_t>> sub_x_dofmaps = {sub_x_dofmap};
-  return {Geometry<T>(sub_x_dof_index_map, sub_x_dofmaps, {sub_coord_ele},
-                      std::move(sub_x), geometry.dim(), std::move(sub_igi)),
+  return {Geometry<T>(sub_x_dof_index_map, std::move(sub_x_dofmap),
+                      {sub_coord_ele}, std::move(sub_x), geometry.dim(),
+                      std::move(sub_igi)),
           std::move(subx_to_x_dofmap)};
 }
 
