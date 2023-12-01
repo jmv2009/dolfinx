@@ -38,7 +38,7 @@ public:
   /// @brief Constructor of object that holds mesh geometry data.
   ///
   /// @param[in] index_map Index map associated with the geometry dofmap
-  /// @param[in] dofmap The geometry (point) dofmap. For a cell, it
+  /// @param[in] dofmaps The geometry (point) dofmaps. For a cell, it
   /// gives the position in the point array of each local geometry node
   /// @param[in] elements The elements that describes the cell geometry
   /// maps
