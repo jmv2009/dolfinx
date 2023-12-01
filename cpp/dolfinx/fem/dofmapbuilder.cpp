@@ -141,7 +141,7 @@ build_basic_dofmap(
   common::Timer t0("Init dofmap from element dofmap");
 
   // Topological dimension
-  const int D = topology.dim();
+  const std::size_t D = topology.dim();
 
   // Checks for mixed topology
   if (element_dof_layouts.size() != topology.cell_types().size())
@@ -608,7 +608,7 @@ fem::build_dofmap_data(
 {
   common::Timer t0("Build dofmap data");
 
-  const std::size_t D = topology.dim();
+  const int D = topology.dim();
 
   // Build a simple dofmap based on mesh entity numbering, returning (i)
   // a local dofmap, (ii) local-to-global map for dof indices, and (iii)
