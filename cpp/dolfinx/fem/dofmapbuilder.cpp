@@ -188,8 +188,7 @@ build_basic_dofmap(
 
   // Generate and number required mesh entities
   std::vector<std::int8_t> needs_entities(D + 1, false);
-  std::vector<std::int32_t> num_mesh_entities_local(D + 1, 0),
-      num_mesh_entities_global(D + 1, 0);
+  std::vector<std::int32_t> num_mesh_entities_local(D + 1, 0);
   for (int d = 0; d <= D; ++d)
   {
     // FIXME: Mixed-topology - P2/Q2 - Q has dof on interior, P does not - need
@@ -204,8 +203,6 @@ build_basic_dofmap(
       }
       needs_entities[d] = true;
       num_mesh_entities_local[d] = topology.connectivity(d, 0)->num_nodes();
-      assert(topology.index_map(d));
-      num_mesh_entities_global[d] = topology.index_map(d)->size_global();
     }
   }
 
@@ -214,18 +211,6 @@ build_basic_dofmap(
       connectivity;
   for (int d = 0; d <= D; ++d)
     connectivity.push_back(topology.connectivity(D, d));
-
-  // Build global dof arrays
-  std::vector<std::vector<std::int64_t>> global_indices(D + 1);
-  for (int d = 0; d <= D; ++d)
-  {
-    if (needs_entities[d])
-    {
-      auto map = topology.index_map(d);
-      assert(map);
-      global_indices[d] = map->global_indices();
-    }
-  }
 
   // Number of dofs on this process
   // FIXME: This assumes that the number of dofs on the entities of each element
@@ -257,9 +242,6 @@ build_basic_dofmap(
   std::vector<std::vector<std::vector<std::vector<int>>>> entity_dofs(nelem);
   for (std::size_t i = 0; i < element_dof_layouts.size(); ++i)
     entity_dofs[i] = element_dof_layouts[i].entity_dofs_all();
-
-  // Storage for local-to-global map
-  std::vector<std::int64_t> local_to_global(local_size);
 
   assert(group_offsets.back() == connectivity[0]->num_nodes());
 
@@ -309,6 +291,8 @@ build_basic_dofmap(
     }
   }
 
+  // Global index computations
+
   // Create local to global map and dof entity map. NOTE this must be done
   // outside of the above loop as some processes may have vertices that don't
   // belong to a cell on that process.
@@ -316,17 +300,23 @@ build_basic_dofmap(
   std::int64_t offset_global = 0;
   // Dof -> (dim, entity index) marker
   std::vector<std::pair<std::int8_t, std::int32_t>> dof_entity(local_size);
+  // Storage for local-to-global map
+  std::vector<std::int64_t> local_to_global(local_size);
+
   for (int d = 0; d <= D; ++d)
   {
     if (needs_entities[d])
     {
-      // NOTE This assumes all entities have the same number of dofs
-      // Mixed topology: probably OK for P1/Q1 but not higher...
+      auto map = topology.index_map(d);
+      assert(map);
+      std::int64_t num_mesh_entities_global = map->size_global();
+      std::vector<std::int64_t> global_indices = map->global_indices();
+
       auto num_entity_dofs = entity_dofs[0][d][0].size();
       for (std::int32_t e_index_local = 0;
            e_index_local < num_mesh_entities_local[d]; ++e_index_local)
       {
-        auto e_index_global = global_indices[d][e_index_local];
+        auto e_index_global = global_indices[e_index_local];
 
         for (std::size_t count = 0; count < num_entity_dofs; ++count)
         {
@@ -338,7 +328,7 @@ build_basic_dofmap(
         }
       }
       offset_local += num_entity_dofs * num_mesh_entities_local[d];
-      offset_global += num_entity_dofs * num_mesh_entities_global[d];
+      offset_global += num_entity_dofs * num_mesh_entities_global;
     }
   }
 
