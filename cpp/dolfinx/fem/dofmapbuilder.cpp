@@ -128,10 +128,10 @@ reorder_owned(mdspan2_t<const std::int32_t> dofmap, std::int32_t owned_size,
 /// @param [in] mesh The mesh to build the dofmap on
 /// @param [in] topology The mesh topology
 /// @param [in] element_dof_layout The layout of dofs on a cell
-/// @return Returns {dofmap (local to the process), local-to-global map
-/// to get the global index of local dof i, dof indices, vector of
-/// {dimension, mesh entity index} for each local dof i}
-std::tuple<std::vector<std::int32_t>, std::vector<std::int64_t>,
+/// @return Returns {dofmaps for each element type (local to the process),
+/// local-to-global map to get the global index of local dof i, dof indices,
+/// vector of {dimension, mesh entity index} for each local dof i}
+std::tuple<std::vector<std::vector<std::int32_t>>, std::vector<std::int64_t>,
            std::vector<std::pair<std::int8_t, std::int32_t>>>
 build_basic_dofmap(
     const mesh::Topology& topology,
@@ -319,8 +319,7 @@ build_basic_dofmap(
     }
   }
 
-  return {std::move(dofs[0]), std::move(local_to_global),
-          std::move(dof_entity)};
+  return {std::move(dofs), std::move(local_to_global), std::move(dof_entity)};
 }
 //-----------------------------------------------------------------------------
 
@@ -620,8 +619,8 @@ fem::build_dofmap_data(
   // Build re-ordering map for data locality and get number of owned
   // nodes
   mdspan2_t<const std::int32_t> _node_graph0(
-      node_graph0.data(),
-      node_graph0.size() / element_dof_layouts[0].num_dofs(),
+      node_graph0[0].data(),
+      node_graph0[0].size() / element_dof_layouts[0].num_dofs(),
       element_dof_layouts[0].num_dofs());
   const auto [old_to_new, num_owned]
       = compute_reordering_map(_node_graph0, dof_entity0, topology, reorder_fn);
@@ -637,7 +636,7 @@ fem::build_dofmap_data(
                              local_to_global_owner);
 
   // Build re-ordered dofmap
-  std::vector<std::int32_t> dofmap(node_graph0.size());
+  std::vector<std::int32_t> dofmap(node_graph0[0].size());
   for (std::size_t cell = 0; cell < _node_graph0.extent(0); ++cell)
   {
     // Get dof order on this cell
