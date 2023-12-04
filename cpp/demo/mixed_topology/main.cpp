@@ -20,11 +20,11 @@ int main(int argc, char* argv[])
   MPI_Init(&argc, &argv);
 
   // Number of square cell in x-direction
-  constexpr int nx_s = 2;
+  constexpr int nx_s = 1;
   // Number of triangle cells in x-direction
-  constexpr int nx_t = 2;
+  constexpr int nx_t = 1;
   // Number of cells in y-direction
-  constexpr int ny = 4;
+  constexpr int ny = 2;
 
   constexpr int num_s = nx_s * ny;
   constexpr int num_t = 2 * nx_t * ny;
