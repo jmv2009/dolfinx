@@ -192,7 +192,7 @@ create_geometry(
   for (auto e : elements)
     dof_layouts.push_back(e.create_dof_layout());
 
-  //  Build 'geometry' dofmap on the topology
+  //  Build 'geometry' dofmaps on the topology
   auto [_dof_index_map, bs, dofmaps]
       = fem::build_dofmap_data(comm, topology, dof_layouts, reorder_fn);
   auto dof_index_map
@@ -231,8 +231,30 @@ create_geometry(
 
     // Compute local-to-global map from local indices in dofmap to the
     // corresponding global indices in cell_nodes
-    std::vector l2g
-        = graph::build::compute_local_to_global(cell_nodes.array(), dofmaps[0]);
+    std::cout << "Calling compute_local_to_global\n";
+    std::vector<std::int64_t> l2g;
+    auto current_offset = cell_nodes.array().data();
+    for (std::size_t i = 0; i < dofmaps.size(); ++i)
+    {
+      std::span<const std::int64_t> cell_nodes_i(current_offset,
+                                                 dofmaps[i].size());
+      std::vector<std::int64_t> l2g_i
+          = graph::build::compute_local_to_global(cell_nodes_i, dofmaps[i]);
+      // Merge maps
+      if (l2g_i.size() > l2g.size())
+        l2g.resize(l2g_i.size());
+      for (std::size_t j = 0; j < l2g_i.size(); ++j)
+      {
+        if (l2g_i[j] != -1)
+          l2g[j] = l2g_i[j];
+      }
+      current_offset += dofmaps[i].size();
+    }
+    std::stringstream s;
+    s << "Done compute_local_to_global\n";
+    s << "l2g size = " << l2g.size() << "\n";
+    s << "indices.size = " << indices.size() << "\n";
+    std::cout << s.str();
 
     // Compute local (dof) to local (position in coords) map from (i)
     // local-to-global for dofs and (ii) local-to-global for entries in

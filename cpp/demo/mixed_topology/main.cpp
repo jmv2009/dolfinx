@@ -136,11 +136,12 @@ int main(int argc, char* argv[])
                                       cells_list, x, 2);
 
     mesh::Mesh<double> mesh(MPI_COMM_WORLD, topo, geom);
-    std::cout << "num cells = " << mesh.topology()->index_map(2)->size_local()
-              << "\n";
+    std::stringstream s;
+    s << "num cells = " << mesh.topology()->index_map(2)->size_local() << "\n";
     for (auto q : mesh.topology()->entity_group_offsets(2))
-      std::cout << q << " ";
-    std::cout << "\n";
+      s << q << " ";
+    s << "\n";
+    std::cout << s.str();
   }
 
   MPI_Finalize();
