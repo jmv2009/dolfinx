@@ -280,33 +280,6 @@ build_basic_dofmap(
     }
   }
 
-  std::stringstream s;
-  for (std::size_t i = 0; i < nelem; ++i)
-  {
-    s << "dofs for dofmap " << i << ": ("
-      << group_offsets[i + 1] - group_offsets[i] << ")\n";
-    for (int j = group_offsets[i]; j < group_offsets[i + 1]; ++j)
-    {
-      int off = j - group_offsets[i];
-      s << "[";
-      for (int k = 0; k < dm_width[i]; ++k)
-        s << dofs[i][off * dm_width[i] + k] << " ";
-      s << "]\n";
-    }
-    s << "ghost cells: ("
-      << group_offsets[i + nelem + 1] - group_offsets[i + nelem] << ")\n";
-    for (int j = group_offsets[i + nelem]; j < group_offsets[i + nelem + 1];
-         ++j)
-    {
-      int off = j - group_offsets[i + nelem];
-      s << "[";
-      for (int k = 0; k < dm_width[i]; ++k)
-        s << dofs[i][off * dm_width[i] + k] << " ";
-      s << "]\n";
-    }
-  }
-  std::cout << s.str();
-
   // Global index computations
   // FIXME: separate function
 
@@ -347,6 +320,36 @@ build_basic_dofmap(
       offset_global += num_entity_dofs * map->size_global();
     }
   }
+
+  std::stringstream s;
+  for (std::size_t i = 0; i < nelem; ++i)
+  {
+    s << "dofs for dofmap " << i << ": ("
+      << group_offsets[i + 1] - group_offsets[i] << ")\n";
+    for (int j = group_offsets[i]; j < group_offsets[i + 1]; ++j)
+    {
+      int off = j - group_offsets[i];
+      s << "l:[";
+      for (int k = 0; k < dm_width[i]; ++k)
+        s << dofs[i][off * dm_width[i] + k] << " ";
+      s << "] g:[";
+      for (int k = 0; k < dm_width[i]; ++k)
+        s << local_to_global[dofs[i][off * dm_width[i] + k]] << " ";
+      s << "]\n";
+    }
+    s << "ghost cells: ("
+      << group_offsets[i + nelem + 1] - group_offsets[i + nelem] << ")\n";
+    for (int j = group_offsets[i + nelem]; j < group_offsets[i + nelem + 1];
+         ++j)
+    {
+      int off = j - group_offsets[i + nelem];
+      s << "[";
+      for (int k = 0; k < dm_width[i]; ++k)
+        s << dofs[i][off * dm_width[i] + k] << " ";
+      s << "]\n";
+    }
+  }
+  std::cout << s.str();
 
   return {std::move(dofs), std::move(local_to_global), std::move(dof_entity)};
 }
@@ -634,7 +637,7 @@ std::pair<std::vector<std::int64_t>, std::vector<int>> get_global_indices(
 } // namespace
 
 //-----------------------------------------------------------------------------
-std::tuple<common::IndexMap, int, std::vector<std::int32_t>>
+std::tuple<common::IndexMap, int, std::vector<std::vector<std::int32_t>>>
 fem::build_dofmap_data(
     MPI_Comm comm, const mesh::Topology& topology,
     const std::vector<ElementDofLayout>& element_dof_layouts,
@@ -677,7 +680,6 @@ fem::build_dofmap_data(
   for (auto q : old_to_new)
     s << q << " ";
   s << "\n";
-  std::cout << s.str();
 
   // Get global indices for unowned dofs
   const auto [local_to_global_unowned, local_to_global_owner]
@@ -712,7 +714,33 @@ fem::build_dofmap_data(
     }
   }
 
-  return {std::move(index_map), element_dof_layouts[0].block_size(),
-          std::move(dofmaps[0])};
+  std::size_t nelem = element_dof_layouts.size();
+  const std::vector<int>& group_offsets
+      = topology.entity_group_offsets(topology.dim());
+  for (std::size_t i = 0; i < nelem; ++i)
+  {
+    int dm_width = element_dof_layouts[i].num_dofs();
+    s << " Reordered dofs for dofmap " << i << ": ("
+      << group_offsets[i + 1] - group_offsets[i] << ")\n";
+    for (int j = group_offsets[i]; j < group_offsets[i + 1]; ++j)
+    {
+      int off = j - group_offsets[i];
+      s << "local:[";
+      for (int k = 0; k < dm_width; ++k)
+        s << dofmaps[i][off * dm_width + k] << " ";
+      s << "] \n";
+    }
+  }
+  std::cout << s.str();
+
+  // Mixed-topology check bs same for all elements
+  int bs = element_dof_layouts[0].block_size();
+  for (auto el : element_dof_layouts)
+    if (el.block_size() != bs)
+    {
+      throw std::runtime_error("Incompatible block size between elements.");
+    }
+
+  return {std::move(index_map), bs, std::move(dofmaps)};
 }
 //-----------------------------------------------------------------------------

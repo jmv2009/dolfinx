@@ -193,7 +193,7 @@ create_geometry(
     dof_layouts.push_back(e.create_dof_layout());
 
   //  Build 'geometry' dofmap on the topology
-  auto [_dof_index_map, bs, dofmap]
+  auto [_dof_index_map, bs, dofmaps]
       = fem::build_dofmap_data(comm, topology, dof_layouts, reorder_fn);
   auto dof_index_map
       = std::make_shared<common::IndexMap>(std::move(_dof_index_map));
@@ -211,13 +211,13 @@ create_geometry(
     int dim = elements[0].dim();
     for (std::int32_t cell = 0; cell < num_cells; ++cell)
     {
-      std::span<std::int32_t> dofs(dofmap.data() + cell * dim, dim);
+      std::span<std::int32_t> dofs(dofmaps[0].data() + cell * dim, dim);
       elements[0].unpermute_dofs(dofs, cell_info[cell]);
     }
   }
 
   auto remap_data
-      = [](auto comm, auto& cell_nodes, auto& x, int dim, auto& dofmap)
+      = [](auto comm, auto& cell_nodes, auto& x, int dim, auto& dofmaps)
   {
     // Build list of unique (global) node indices from adjacency list
     // (geometry nodes)
@@ -232,7 +232,7 @@ create_geometry(
     // Compute local-to-global map from local indices in dofmap to the
     // corresponding global indices in cell_nodes
     std::vector l2g
-        = graph::build::compute_local_to_global(cell_nodes.array(), dofmap);
+        = graph::build::compute_local_to_global(cell_nodes.array(), dofmaps[0]);
 
     // Compute local (dof) to local (position in coords) map from (i)
     // local-to-global for dofs and (ii) local-to-global for entries in
@@ -247,7 +247,7 @@ create_geometry(
     return std::tuple(std::move(coords), std::move(l2l), std::move(igi));
   };
 
-  auto [coords, l2l, igi] = remap_data(comm, cell_nodes, x, dim, dofmap);
+  auto [coords, l2l, igi] = remap_data(comm, cell_nodes, x, dim, dofmaps);
 
   // Build coordinate dof array, copying coordinates to correct
   // position
@@ -263,7 +263,7 @@ create_geometry(
   }
 
   return Geometry<typename std::remove_reference_t<typename U::value_type>>(
-      dof_index_map, std::move(dofmap), elements, std::move(xg), dim,
+      dof_index_map, std::move(dofmaps[0]), elements, std::move(xg), dim,
       std::move(igi));
 }
 

@@ -29,13 +29,15 @@ int main(int argc, char* argv[])
   constexpr int num_s = nx_s * ny;
   constexpr int num_t = 2 * nx_t * ny;
 
+  const int mpi_rank = dolfinx::MPI::rank(MPI_COMM_WORLD);
+
   std::vector<double> x;
   for (int i = 0; i < nx_s + nx_t + 1; ++i)
   {
     for (int j = 0; j < ny + 1; ++j)
     {
       x.push_back(i);
-      x.push_back(j);
+      x.push_back(j + ny * mpi_rank);
     }
   }
 
@@ -45,7 +47,8 @@ int main(int argc, char* argv[])
   {
     for (int j = 0; j < ny; ++j)
     {
-      const int v_0 = j + i * (ny + 1);
+      const int j0 = j + ny * mpi_rank;
+      const int v_0 = j0 + i * (ny + 1);
       const int v_1 = v_0 + 1;
       const int v_2 = v_0 + ny + 1;
       const int v_3 = v_0 + ny + 2;
@@ -81,8 +84,8 @@ int main(int argc, char* argv[])
   std::vector<std::int64_t> boundary_vertices;
   for (int j = 0; j < ny + 1; ++j)
   {
-    boundary_vertices.push_back(j);
-    boundary_vertices.push_back(j + (nx_s + nx_t + 1) * ny);
+    boundary_vertices.push_back(j + ny * mpi_rank);
+    boundary_vertices.push_back(j + ny * mpi_rank + (nx_s + nx_t + 1) * ny);
   }
   for (int i = 0; i < nx_s + nx_t + 1; ++i)
   {
