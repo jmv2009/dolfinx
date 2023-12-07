@@ -349,7 +349,7 @@ build_basic_dofmap(
       s << "]\n";
     }
   }
-  std::cout << s.str();
+  // std::cout << s.str();
 
   return {std::move(dofs), std::move(local_to_global), std::move(dof_entity)};
 }
@@ -731,7 +731,7 @@ fem::build_dofmap_data(
       s << "] \n";
     }
   }
-  std::cout << s.str();
+  // std::cout << s.str();
 
   // Mixed-topology check bs same for all elements
   int bs = element_dof_layouts[0].block_size();
