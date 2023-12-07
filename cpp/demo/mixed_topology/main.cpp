@@ -20,9 +20,9 @@ int main(int argc, char* argv[])
   MPI_Init(&argc, &argv);
 
   // Number of square cell in x-direction
-  constexpr int nx_s = 1;
+  constexpr int nx_s = 2;
   // Number of triangle cells in x-direction
-  constexpr int nx_t = 1;
+  constexpr int nx_t = 2;
   // Number of cells in y-direction
   constexpr int ny = 2;
 
@@ -87,10 +87,18 @@ int main(int argc, char* argv[])
     boundary_vertices.push_back(j + ny * mpi_rank);
     boundary_vertices.push_back(j + ny * mpi_rank + (nx_s + nx_t + 1) * ny);
   }
-  for (int i = 0; i < nx_s + nx_t + 1; ++i)
+
+  int mpi_size = dolfinx::MPI::size(MPI_COMM_WORLD);
+  if (mpi_rank == 0)
   {
-    boundary_vertices.push_back((ny + 1) * i);
-    boundary_vertices.push_back(ny + (ny + 1) * i);
+    for (int i = 0; i < nx_s + nx_t + 1; ++i)
+      boundary_vertices.push_back((ny * mpi_rank + 1) * i);
+  }
+
+  if (mpi_rank == mpi_size - 1)
+  {
+    for (int i = 0; i < nx_s + nx_t + 1; ++i)
+      boundary_vertices.push_back((ny * mpi_rank + 1) * (i + 1) - 1);
   }
 
   std::sort(boundary_vertices.begin(), boundary_vertices.end());
@@ -111,32 +119,32 @@ int main(int argc, char* argv[])
 
     auto topo_cells = topo->connectivity(2, 0);
 
-    std::cout << "cells\n------\n";
+    std::stringstream s;
+    s << "cells\n------\n";
     for (int i = 0; i < topo_cells->num_nodes(); ++i)
     {
-      std::cout << i << " [";
+      s << i << " [";
       for (auto q : topo_cells->links(i))
-        std::cout << q << " ";
-      std::cout << "]\n";
+        s << q << " ";
+      s << "]\n";
     }
 
     topo->create_connectivity(1, 0);
 
-    std::cout << "facets\n------\n";
+    s << "facets\n------\n";
     auto topo_facets = topo->connectivity(1, 0);
     for (int i = 0; i < topo_facets->num_nodes(); ++i)
     {
-      std::cout << i << " [";
+      s << i << " [";
       for (auto q : topo_facets->links(i))
-        std::cout << q << " ";
-      std::cout << "]\n";
+        s << q << " ";
+      s << "]\n";
     }
 
     auto geom = mesh::create_geometry(MPI_COMM_WORLD, *topo, elements,
                                       cells_list, x, 2);
 
     mesh::Mesh<double> mesh(MPI_COMM_WORLD, topo, geom);
-    std::stringstream s;
     s << "num cells = " << mesh.topology()->index_map(2)->size_local() << "\n";
     for (auto q : mesh.topology()->entity_group_offsets(2))
       s << q << " ";
