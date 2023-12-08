@@ -20,11 +20,11 @@ int main(int argc, char* argv[])
   MPI_Init(&argc, &argv);
 
   // Number of square cell in x-direction
-  constexpr int nx_s = 3;
+  constexpr int nx_s = 2;
   // Number of triangle cells in x-direction
-  constexpr int nx_t = 4;
+  constexpr int nx_t = 2;
   // Number of cells in y-direction
-  constexpr int ny = 2;
+  constexpr int ny = 12;
 
   constexpr int num_s = nx_s * ny;
   constexpr int num_t = 2 * nx_t * ny;
@@ -51,7 +51,7 @@ int main(int argc, char* argv[])
     for (int j = 0; j < ny; ++j)
     {
       const int j0 = j + ny * mpi_rank;
-      const int v_0 = j0 + i * (ny + 1);
+      const int v_0 = j0 + i * (ny * mpi_size + 1);
       const int v_1 = v_0 + 1;
       const int v_2 = v_0 + ny * mpi_size + 1;
       const int v_3 = v_0 + ny * mpi_size + 2;
@@ -89,25 +89,33 @@ int main(int argc, char* argv[])
   for (int j = 0; j < ny + 1; ++j)
   {
     boundary_vertices.push_back(j + ny * mpi_rank);
-    boundary_vertices.push_back(j + ny * mpi_rank + (nx_s + nx_t + 1) * ny);
+    boundary_vertices.push_back(j + ny * mpi_rank
+                                + (nx_s + nx_t) * (ny * mpi_size + 1));
   }
 
   if (mpi_rank == 0)
   {
     for (int i = 0; i < nx_s + nx_t + 1; ++i)
-      boundary_vertices.push_back((ny * mpi_rank + 1) * i);
+      boundary_vertices.push_back((ny * mpi_size + 1) * i);
   }
 
   if (mpi_rank == mpi_size - 1)
   {
-    for (int i = 0; i < nx_s + nx_t + 1; ++i)
-      boundary_vertices.push_back((ny * mpi_rank + 1) * (i + 1) - 1);
+    for (int i = 0; i < nx_s + nx_t; ++i)
+      boundary_vertices.push_back((ny * mpi_size + 1) * (i + 1) - 1);
   }
 
   std::sort(boundary_vertices.begin(), boundary_vertices.end());
   boundary_vertices.erase(
       std::unique(boundary_vertices.begin(), boundary_vertices.end()),
       boundary_vertices.end());
+
+  std::stringstream sq;
+  sq << "boundary vertices = ";
+  for (auto q : boundary_vertices)
+    sq << q << " ";
+  sq << "\n";
+  std::cout << sq.str();
 
   std::vector<mesh::CellType> cell_types{mesh::CellType::quadrilateral,
                                          mesh::CellType::triangle};
