@@ -20,9 +20,9 @@ int main(int argc, char* argv[])
   MPI_Init(&argc, &argv);
 
   // Number of square cell in x-direction
-  constexpr int nx_s = 2;
+  constexpr int nx_s = 3;
   // Number of triangle cells in x-direction
-  constexpr int nx_t = 2;
+  constexpr int nx_t = 4;
   // Number of cells in y-direction
   constexpr int ny = 2;
 
@@ -30,16 +30,19 @@ int main(int argc, char* argv[])
   constexpr int num_t = 2 * nx_t * ny;
 
   const int mpi_rank = dolfinx::MPI::rank(MPI_COMM_WORLD);
+  const int mpi_size = dolfinx::MPI::size(MPI_COMM_WORLD);
 
   std::vector<double> x;
+  int nxp = (mpi_rank == mpi_size - 1) ? 1 : 0;
   for (int i = 0; i < nx_s + nx_t + 1; ++i)
   {
-    for (int j = 0; j < ny + 1; ++j)
+    for (int j = 0; j < ny + nxp; ++j)
     {
       x.push_back(i);
       x.push_back(j + ny * mpi_rank);
     }
   }
+  std::cout << "x.size = " << x.size() << "\n";
 
   std::vector<std::int64_t> cells;
   std::vector<std::int32_t> offsets{0};
@@ -50,8 +53,8 @@ int main(int argc, char* argv[])
       const int j0 = j + ny * mpi_rank;
       const int v_0 = j0 + i * (ny + 1);
       const int v_1 = v_0 + 1;
-      const int v_2 = v_0 + ny + 1;
-      const int v_3 = v_0 + ny + 2;
+      const int v_2 = v_0 + ny * mpi_size + 1;
+      const int v_3 = v_0 + ny * mpi_size + 2;
       if (i < nx_s)
       {
         cells.push_back(v_0);
@@ -76,6 +79,7 @@ int main(int argc, char* argv[])
   }
 
   graph::AdjacencyList<std::int64_t> cells_list(cells, offsets);
+  std::cout << cells_list.str() << "\n";
   std::vector<std::int64_t> original_global_index(num_s + num_t);
   std::iota(original_global_index.begin(), original_global_index.end(), 0);
   std::vector<int> ghost_owners;
@@ -88,7 +92,6 @@ int main(int argc, char* argv[])
     boundary_vertices.push_back(j + ny * mpi_rank + (nx_s + nx_t + 1) * ny);
   }
 
-  int mpi_size = dolfinx::MPI::size(MPI_COMM_WORLD);
   if (mpi_rank == 0)
   {
     for (int i = 0; i < nx_s + nx_t + 1; ++i)
