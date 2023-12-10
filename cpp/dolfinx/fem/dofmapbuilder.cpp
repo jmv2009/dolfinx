@@ -329,8 +329,7 @@ build_basic_dofmap(
     }
   }
 
-  return {std::move(dofs[0]), std::move(local_to_global),
-          std::move(dof_entity)};
+  return {std::move(dofs), std::move(local_to_global), std::move(dof_entity)};
 }
 //-----------------------------------------------------------------------------
 
