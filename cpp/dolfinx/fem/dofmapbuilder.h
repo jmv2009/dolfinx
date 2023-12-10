@@ -38,13 +38,8 @@ class ElementDofLayout;
 /// function space
 /// @param[in] reorder_fn Graph reordering function that is applied to
 /// the dofmaps
-<<<<<<< HEAD
 /// @return The index map, block size, and dofmaps for each element type
 std::tuple<common::IndexMap, int, std::vector<std::vector<std::int32_t>>>
-=======
-/// @return The index map, block size, and dofmap for element type 0
-std::tuple<common::IndexMap, int, std::vector<std::int32_t>>
->>>>>>> chris/update-build-basic-dofmap
 build_dofmap_data(MPI_Comm comm, const mesh::Topology& topology,
                   const std::vector<ElementDofLayout>& element_dof_layouts,
                   const std::function<std::vector<int>(

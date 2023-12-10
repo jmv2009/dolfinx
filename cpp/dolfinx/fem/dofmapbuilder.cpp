@@ -130,11 +130,11 @@ reorder_owned(mdspan2_t<const std::int32_t> dofmap, std::int32_t owned_size,
 /// @param [in] mesh The mesh to build the dofmap on
 /// @param [in] topology The mesh topology
 /// @param [in] element_dof_layouts The layout of dofs on each cell type
-/// @return Returns: * dofmap for first element type [0] (local to the process)
+/// @return Returns: * dofmaps for each element type
 ///                  * local-to-global map for each local dof
 ///                  * local-to-entity map for each local dof
 /// Entities are represented as {dimension, mesh entity index}.
-std::tuple<std::vector<std::int32_t>, std::vector<std::int64_t>,
+std::tuple<std::vector<std::vector<std::int32_t>>, std::vector<std::int64_t>,
            std::vector<std::pair<std::int8_t, std::int32_t>>>
 build_basic_dofmap(
     const mesh::Topology& topology,
@@ -328,36 +328,6 @@ build_basic_dofmap(
       offset_global += num_entity_dofs * map->size_global();
     }
   }
-
-  std::stringstream s;
-  for (std::size_t i = 0; i < nelem; ++i)
-  {
-    s << "dofs for dofmap " << i << ": ("
-      << group_offsets[i + 1] - group_offsets[i] << ")\n";
-    for (int j = group_offsets[i]; j < group_offsets[i + 1]; ++j)
-    {
-      int off = j - group_offsets[i];
-      s << "l:[";
-      for (int k = 0; k < dm_width[i]; ++k)
-        s << dofs[i][off * dm_width[i] + k] << " ";
-      s << "] g:[";
-      for (int k = 0; k < dm_width[i]; ++k)
-        s << local_to_global[dofs[i][off * dm_width[i] + k]] << " ";
-      s << "]\n";
-    }
-    s << "ghost cells: ("
-      << group_offsets[i + nelem + 1] - group_offsets[i + nelem] << ")\n";
-    for (int j = group_offsets[i + nelem]; j < group_offsets[i + nelem + 1];
-         ++j)
-    {
-      int off = j - group_offsets[i + nelem];
-      s << "[";
-      for (int k = 0; k < dm_width[i]; ++k)
-        s << dofs[i][off * dm_width[i] + k] << " ";
-      s << "]\n";
-    }
-  }
-  // std::cout << s.str();
 
   return {std::move(dofs), std::move(local_to_global), std::move(dof_entity)};
 }
