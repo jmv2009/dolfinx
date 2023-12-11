@@ -172,6 +172,23 @@ int main(int argc, char* argv[])
         s << '\n';
       }
     }
+    auto im = mesh.geometry().index_map();
+    int nlocal = im->size_local();
+    int nghost = im->num_ghosts();
+    std::vector<std::int32_t> local(nlocal + nghost);
+    std::iota(local.begin(), local.end(), 0);
+    std::vector<std::int64_t> global(local.size());
+    im->local_to_global(local, global);
+    s << nghost << " ";
+    s << "IM: [";
+    for (int i = 0; i < nlocal; ++i)
+      s << global[i] << " ";
+    s << "| ";
+    for (int i = nlocal; i < nlocal + nghost; ++i)
+      s << global[i] << " ";
+    s << "]\n";
+
+    s << "geom.x.size = " << mesh.geometry().x().size() << "\n";
 
     std::cout << s.str();
   }
