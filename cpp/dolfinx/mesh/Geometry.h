@@ -47,21 +47,18 @@ public:
   /// @param[in] dim The geometric dimension (`0 < dim <= 3`).
   /// @param[in] input_global_indices The 'global' input index of each
   /// point, commonly from a mesh input file.
-  template <typename U, typename V, typename W>
-    requires std::is_convertible_v<std::remove_cvref_t<U>,
-                                   std::vector<std::int32_t>>
-                 and std::is_convertible_v<std::remove_cvref_t<V>,
-                                           std::vector<T>>
+  template <typename V, typename W>
+    requires std::is_convertible_v<std::remove_cvref_t<V>, std::vector<T>>
                  and std::is_convertible_v<std::remove_cvref_t<W>,
                                            std::vector<std::int64_t>>
-  Geometry(std::shared_ptr<const common::IndexMap> index_map, U&& dofmap,
-           const std::vector<fem::CoordinateElement<
-               typename
-
-               std::remove_reference_t<typename V::value_type>>>& elements,
-           V&& x, int dim, W&& input_global_indices)
-      : _dim(dim), _dofmap(std::forward<U>(dofmap)), _index_map(index_map),
-        _cmaps(elements), _x(std::forward<V>(x)),
+  Geometry(
+      std::shared_ptr<const common::IndexMap> index_map,
+      std::vector<std::vector<std::int32_t>> dofmaps,
+      const std::vector<fem::CoordinateElement<
+          typename std::remove_reference_t<typename V::value_type>>>& elements,
+      V&& x, int dim, W&& input_global_indices)
+      : _dim(dim), _dofmaps(dofmaps), _index_map(index_map), _cmaps(elements),
+        _x(std::forward<V>(x)),
         _input_global_indices(std::forward<W>(input_global_indices))
   {
     assert(_x.size() % 3 == 0);
@@ -93,11 +90,20 @@ public:
       MDSPAN_IMPL_STANDARD_NAMESPACE::dextents<std::size_t, 2>>
   dofmap() const
   {
-    int ndofs = _cmaps[0].dim();
+    return dofmaps(0);
+  }
+
+  /// DOF map
+  MDSPAN_IMPL_STANDARD_NAMESPACE::mdspan<
+      const std::int32_t,
+      MDSPAN_IMPL_STANDARD_NAMESPACE::dextents<std::size_t, 2>>
+  dofmaps(int i) const
+  {
+    int ndofs = _cmaps[i].dim();
     return MDSPAN_IMPL_STANDARD_NAMESPACE::mdspan<
         const std::int32_t,
         MDSPAN_IMPL_STANDARD_NAMESPACE::dextents<std::size_t, 2>>(
-        _dofmap.data(), _dofmap.size() / ndofs, ndofs);
+        _dofmaps[i].data(), _dofmaps[i].size() / ndofs, ndofs);
   }
 
   /// Index map
@@ -138,7 +144,7 @@ private:
   int _dim;
 
   // Map per cell for extracting coordinate data
-  std::vector<std::int32_t> _dofmap;
+  std::vector<std::vector<std::int32_t>> _dofmaps;
 
   // IndexMap for geometry 'dofmap'
   std::shared_ptr<const common::IndexMap> _index_map;
@@ -285,7 +291,7 @@ create_geometry(
   }
 
   return Geometry<typename std::remove_reference_t<typename U::value_type>>(
-      dof_index_map, std::move(dofmaps[0]), elements, std::move(xg), dim,
+      dof_index_map, std::move(dofmaps), elements, std::move(xg), dim,
       std::move(igi));
 }
 

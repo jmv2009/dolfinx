@@ -24,7 +24,7 @@ int main(int argc, char* argv[])
   // Number of triangle cells in x-direction
   constexpr int nx_t = 2;
   // Number of cells in y-direction
-  constexpr int ny = 12;
+  constexpr int ny = 2;
 
   constexpr int num_s = nx_s * ny;
   constexpr int num_t = 2 * nx_t * ny;
@@ -160,10 +160,23 @@ int main(int argc, char* argv[])
     for (auto q : mesh.topology()->entity_group_offsets(2))
       s << q << " ";
     s << "\n";
+
+    for (std::size_t k = 0; k < cell_types.size(); ++k)
+    {
+      auto dm = mesh.geometry().dofmaps(k);
+      s << "dofmap " << k << " size = " << dm.extent(0) << "\n";
+      for (std::size_t i = 0; i < dm.extent(0); ++i)
+      {
+        for (std::size_t j = 0; j < dm.extent(1); ++j)
+          s << dm(i, j) << ' ';
+        s << '\n';
+      }
+    }
+
     std::cout << s.str();
   }
 
-  MPI_Finalize();
+    MPI_Finalize();
 
-  return 0;
+    return 0;
 }
