@@ -93,17 +93,11 @@ int main(int argc, char* argv[])
                                 + (nx_s + nx_t) * (ny * mpi_size + 1));
   }
 
-  if (mpi_rank == 0)
-  {
-    for (int i = 0; i < nx_s + nx_t + 1; ++i)
-      boundary_vertices.push_back((ny * mpi_size + 1) * i);
-  }
+  for (int i = 0; i < nx_s + nx_t + 1; ++i)
+    boundary_vertices.push_back(ny * mpi_rank + (ny * mpi_size + 1) * i);
 
-  if (mpi_rank == mpi_size - 1)
-  {
-    for (int i = 0; i < nx_s + nx_t; ++i)
-      boundary_vertices.push_back((ny * mpi_size + 1) * (i + 1) - 1);
-  }
+  for (int i = 0; i < nx_s + nx_t + 1; ++i)
+    boundary_vertices.push_back(ny * (mpi_rank + 1) + (ny * mpi_size + 1) * i);
 
   std::sort(boundary_vertices.begin(), boundary_vertices.end());
   boundary_vertices.erase(
