@@ -12,11 +12,10 @@ import pytest
 import basix
 import dolfinx.cpp
 import ufl
-from basix.ufl import blocked_element
+from basix.ufl import quadrature_element
 from dolfinx import fem, la
 from dolfinx.fem import Constant, Expression, Function, form, functionspace
 from dolfinx.mesh import create_unit_square
-from ffcx.element_interface import QuadratureElement
 
 dolfinx.cpp.common.init_logging(["-v"])
 
@@ -233,8 +232,7 @@ def test_assembly_into_quadrature_function(dtype):
     quadrature_degree = 2
     quadrature_points, _ = basix.make_quadrature(basix.CellType.triangle, quadrature_degree)
     quadrature_points = quadrature_points.astype(xtype)
-    Q_element = blocked_element(QuadratureElement(
-        "triangle", (), degree=quadrature_degree, scheme="default"), shape=(2, ))
+    Q_element = quadrature_element("triangle", (2, ), degree=quadrature_degree, scheme="default")
     Q = functionspace(mesh, Q_element)
     P2 = functionspace(mesh, ("P", 2))
 
@@ -285,12 +283,11 @@ def test_assembly_into_quadrature_function(dtype):
     bs = Q.dofmap.bs
     Q_dofs_unrolled = bs * np.repeat(Q_dofs, bs).reshape(-1, bs) + np.arange(bs)
     Q_dofs_unrolled = Q_dofs_unrolled.reshape(-1, bs * quadrature_points.shape[0]).astype(Q_dofs.dtype)
-    assert len(mesh.geometry.cmaps) == 1
     local = e_Q.x.array
     e_exact_eval = np.zeros_like(local)
     for cell in range(num_cells):
         xg = x_g[coord_dofs[cell], :tdim]
-        x = mesh.geometry.cmaps[0].push_forward(quadrature_points, xg)
+        x = mesh.geometry.cmap.push_forward(quadrature_points, xg)
         e_exact_eval[Q_dofs_unrolled[cell]] = e_exact(x.T).T.flatten()
     assert np.allclose(local, e_exact_eval)
 

@@ -21,7 +21,6 @@ Public user interface
    dolfinx.jit
    dolfinx.la
    dolfinx.mesh
-   .. dolfinx.nls
    .. dolfinx.nls.petsc
    dolfinx.pkgconfig
    dolfinx.plot
@@ -46,6 +45,5 @@ application-level use.
    dolfinx.cpp.la
    dolfinx.cpp.log
    dolfinx.cpp.mesh
-   .. dolfinx.cpp.nls
    .. dolfinx.cpp.nls.petsc
    dolfinx.cpp.refinement

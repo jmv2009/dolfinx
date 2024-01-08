@@ -48,12 +48,7 @@ std::vector<T> interpolation_coords(const fem::FiniteElement<T>& element,
   auto x_dofmap = geometry.dofmap();
   std::span<const T> x_g = geometry.x();
 
-  if (geometry.cmaps().size() > 1)
-  {
-    throw std::runtime_error("Mixed topology not supported");
-  }
-
-  const CoordinateElement<T>& cmap = geometry.cmaps()[0];
+  const CoordinateElement<T>& cmap = geometry.cmap();
   const std::size_t num_dofs_g = cmap.dim();
 
   // Get the interpolation points on the reference cells
@@ -400,7 +395,6 @@ void interpolate_same_map(Function<T, U>& u1, const Function<T, U>& u0,
         local1[i] += static_cast<X>(i_m[im_shape[1] * i + j]) * local0[j];
 
     apply_inverse_dof_transform(local1, cell_info, c, 1);
-
     std::span<const std::int32_t> dofs1 = dofmap1->cell_dofs(c);
     for (std::size_t i = 0; i < dofs1.size(); ++i)
       for (int k = 0; k < bs1; ++k)
@@ -408,11 +402,11 @@ void interpolate_same_map(Function<T, U>& u1, const Function<T, U>& u0,
   }
 }
 
-/// Interpolate from one finite element Function to another on the same mesh.
-/// This interpolation function is for cases where the finite element basis
-/// functions for the two elements are mapped differently, e.g. one may be
-/// subject to a Piola mapping and the other to a standard isoparametric
-/// mapping.
+/// Interpolate from one finite element Function to another on the same
+/// mesh. This interpolation function is for cases where the finite
+/// element basis functions for the two elements are mapped differently,
+/// e.g. one may be subject to a Piola mapping and the other to a
+/// standard isoparametric mapping.
 /// @param[out] u1 The function to interpolate to
 /// @param[in] u0 The function to interpolate from
 /// @param[in] cells The cells to interpolate on
@@ -469,11 +463,7 @@ void interpolate_nonmatching_maps(Function<T, U>& u1, const Function<T, U>& u0,
   const std::size_t value_size_ref0 = element0->reference_value_size() / bs0;
   const std::size_t value_size0 = element0->value_size() / bs0;
 
-  // Get geometry data
-  if (mesh->geometry().cmaps().size() > 1)
-    throw std::runtime_error("Multiple cmaps");
-
-  const CoordinateElement<U>& cmap = mesh->geometry().cmaps()[0];
+  const CoordinateElement<U>& cmap = mesh->geometry().cmap();
   auto x_dofmap = mesh->geometry().dofmap();
   const std::size_t num_dofs_g = cmap.dim();
   std::span<const U> x_g = mesh->geometry().x();
@@ -903,9 +893,7 @@ void interpolate(Function<T, U>& u, std::span<const T> f,
       throw std::runtime_error("Interpolation data has the wrong shape.");
 
     // Get coordinate map
-    if (mesh->geometry().cmaps().size() > 1)
-      throw std::runtime_error("Multiple cmaps");
-    const CoordinateElement<U>& cmap = mesh->geometry().cmaps()[0];
+    const CoordinateElement<U>& cmap = mesh->geometry().cmap();
 
     // Get geometry data
     auto x_dofmap = mesh->geometry().dofmap();

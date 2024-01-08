@@ -124,7 +124,7 @@ template <std::floating_point T>
 FiniteElement<T>::FiniteElement(const ufcx_finite_element& e)
     : _signature(e.signature), _space_dim(e.space_dimension),
       _value_shape(e.value_shape, e.value_shape + e.value_rank),
-      _bs(e.block_size)
+      _bs(e.block_size), _is_mixed(e.element_type == ufcx_mixed_element)
 {
   const ufcx_shape _shape = e.cell_shape;
   switch (_shape)
@@ -280,7 +280,7 @@ FiniteElement<T>::FiniteElement(const ufcx_finite_element& e)
 
   if (is_quadrature_element(e))
   {
-    assert (e.custom_quadrature);
+    assert(e.custom_quadrature);
     ufcx_quadrature_rule* qr = e.custom_quadrature;
     std::size_t npts = qr->npts;
     std::size_t tdim = qr->topological_dimension;
@@ -293,7 +293,7 @@ FiniteElement<T>::FiniteElement(const ufcx_finite_element& e)
 template <std::floating_point T>
 FiniteElement<T>::FiniteElement(const basix::FiniteElement<T>& element,
                                 const std::vector<std::size_t>& value_shape)
-    : _value_shape(element.value_shape())
+    : _value_shape(element.value_shape()), _is_mixed(false)
 {
   if (!_value_shape.empty() and !value_shape.empty())
   {
@@ -440,7 +440,7 @@ int FiniteElement<T>::num_sub_elements() const noexcept
 template <std::floating_point T>
 bool FiniteElement<T>::is_mixed() const noexcept
 {
-  return !_sub_elements.empty() and _bs == 1;
+  return _is_mixed;
 }
 //-----------------------------------------------------------------------------
 template <std::floating_point T>
@@ -603,10 +603,12 @@ void FiniteElement<T>::unpermute_dofs(const std::span<std::int32_t>& doflist,
   _element->unpermute_dofs(doflist, cell_permutation);
 }
 //-----------------------------------------------------------------------------
+/// @cond
 template <std::floating_point T>
 std::function<void(const std::span<std::int32_t>&, std::uint32_t)>
 FiniteElement<T>::get_dof_permutation_function(bool inverse,
                                                bool scalar_element) const
+/// @endcond
 {
   if (!needs_dof_permutations())
     return [](const std::span<std::int32_t>&, std::uint32_t) {};

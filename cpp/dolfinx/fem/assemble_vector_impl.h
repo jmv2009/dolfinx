@@ -13,7 +13,9 @@
 #include "FunctionSpace.h"
 #include "utils.h"
 #include <algorithm>
+#include <basix/mdspan.hpp>
 #include <concepts>
+#include <cstdint>
 #include <dolfinx/common/IndexMap.h>
 #include <dolfinx/mesh/Geometry.h>
 #include <dolfinx/mesh/Mesh.h>
@@ -25,11 +27,12 @@
 
 namespace dolfinx::fem::impl
 {
+
+/// @cond
 using mdspan2_t = MDSPAN_IMPL_STANDARD_NAMESPACE::mdspan<
     const std::int32_t,
     MDSPAN_IMPL_STANDARD_NAMESPACE::dextents<std::size_t, 2>>;
-
-/// Implementation of vector assembly
+/// @endcond
 
 /// @brief Implementation of bc application
 /// @tparam T The scalar type
@@ -806,8 +809,8 @@ void lift_bc(std::span<T> b, const Form<T, U>& a, mdspan2_t x_dofmap,
     }
     else
     {
-      _lift_bc_cells(b, x_dofmap, x, kernel, cells, pre_dof_transform, dofmap0, bs0,
-                     post_dof_transpose, dofmap1, bs1, constants, coeffs,
+      _lift_bc_cells(b, x_dofmap, x, kernel, cells, pre_dof_transform, dofmap0,
+                     bs0, post_dof_transpose, dofmap1, bs1, constants, coeffs,
                      cstride, cell_info, bc_values1, bc_markers1, x0, scale);
     }
   }
@@ -818,11 +821,11 @@ void lift_bc(std::span<T> b, const Form<T, U>& a, mdspan2_t x_dofmap,
     assert(kernel);
     auto& [coeffs, cstride]
         = coefficients.at({IntegralType::exterior_facet, i});
-    _lift_bc_exterior_facets(b, x_dofmap, x, kernel,
-                             a.domain(IntegralType::exterior_facet, i),
-                             pre_dof_transform, dofmap0, bs0, post_dof_transpose,
-                             dofmap1, bs1, constants, coeffs, cstride,
-                             cell_info, bc_values1, bc_markers1, x0, scale);
+    _lift_bc_exterior_facets(
+        b, x_dofmap, x, kernel, a.domain(IntegralType::exterior_facet, i),
+        pre_dof_transform, dofmap0, bs0, post_dof_transpose, dofmap1, bs1,
+        constants, coeffs, cstride, cell_info, bc_values1, bc_markers1, x0,
+        scale);
   }
 
   if (a.num_integrals(IntegralType::interior_facet) > 0)
@@ -838,11 +841,9 @@ void lift_bc(std::span<T> b, const Form<T, U>& a, mdspan2_t x_dofmap,
     else
       get_perm = [](std::size_t) { return 0; };
 
-    auto cell_types = mesh->topology()->cell_types();
-    if (cell_types.size() > 1)
-      throw std::runtime_error("Multiple cell types in the assembler");
-    int num_cell_facets = mesh::cell_num_entities(cell_types.back(),
-                                                  mesh->topology()->dim() - 1);
+    mesh::CellType cell_type = mesh->topology()->cell_type();
+    int num_cell_facets
+        = mesh::cell_num_entities(cell_type, mesh->topology()->dim() - 1);
     for (int i : a.integral_ids(IntegralType::interior_facet))
     {
       auto kernel = a.kernel(IntegralType::interior_facet, i);
@@ -1046,11 +1047,9 @@ void assemble_vector(
     else
       get_perm = [](std::size_t) { return 0; };
 
-    auto cell_types = mesh->topology()->cell_types();
-    if (cell_types.size() > 1)
-      throw std::runtime_error("Multiple cell types in the assembler");
-    int num_cell_facets = mesh::cell_num_entities(cell_types.back(),
-                                                  mesh->topology()->dim() - 1);
+    mesh::CellType cell_type = mesh->topology()->cell_type();
+    int num_cell_facets
+        = mesh::cell_num_entities(cell_type, mesh->topology()->dim() - 1);
     for (int i : L.integral_ids(IntegralType::interior_facet))
     {
       auto fn = L.kernel(IntegralType::interior_facet, i);

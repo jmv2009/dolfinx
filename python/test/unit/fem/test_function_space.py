@@ -241,7 +241,8 @@ def test_cell_mismatch(mesh):
 def test_basix_element(V, W, Q, V2):
     for V_ in (V, W, V2):
         e = V_.element.basix_element
-        assert isinstance(e, basix.finite_element.FiniteElement)
+        assert isinstance(e, (basix._basixcpp.FiniteElement_float64,
+                              basix._basixcpp.FiniteElement_float32))
 
     # Mixed spaces do not yet return a basix element
     with pytest.raises(RuntimeError):
@@ -274,7 +275,7 @@ def test_manifold_spaces():
         (0.0, 0.0, 1.0), (1.0, 1.0, 1.0),
         (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)], dtype=default_real_type)
     cells = [(0, 1, 2), (0, 1, 3)]
-    domain = Mesh(element("Lagrange", "triangle", 1, gdim=3, shape=(2,)))
+    domain = Mesh(element("Lagrange", "triangle", 1, gdim=3, shape=(2,), dtype=default_real_type))
     mesh = create_mesh(MPI.COMM_WORLD, cells, vertices, domain)
     gdim = mesh.geometry.dim
     QV = functionspace(mesh, ("Lagrange", 1, (gdim,)))
