@@ -18,11 +18,8 @@ if not has_petsc:
 
 import contextlib
 import functools
-import os
 import typing
 
-import petsc4py
-import petsc4py.lib
 from petsc4py import PETSc
 
 import numpy as np
@@ -779,42 +776,3 @@ class NonlinearProblem:
         A.zeroEntries()
         assemble_matrix_mat(A, self._a, self.bcs)
         A.assemble()
-
-
-def load_petsc_lib(loader: typing.Callable[[str], typing.Any]) -> typing.Any:
-    """Load PETSc shared library using loader callable, e.g. ctypes.CDLL.
-
-    Args:
-        loader: A callable that accepts a library path and returns a wrapped library.
-
-    Returns:
-        A wrapped library of the type returned by the callable.
-
-    """
-    petsc_lib = None
-
-    petsc_dir = petsc4py.get_config()['PETSC_DIR']
-    petsc_arch = petsc4py.lib.getPathArchPETSc()[1]
-
-    candidate_paths = [os.path.join(petsc_dir, petsc_arch, "lib", "libpetsc.so"),
-                       os.path.join(petsc_dir, petsc_arch, "lib", "libpetsc.dylib")]
-
-    exists_paths = []
-    for candidate_path in candidate_paths:
-        if os.path.exists(candidate_path):
-            exists_paths.append(candidate_path)
-
-    if len(exists_paths) == 0:
-        raise RuntimeError("Could not find a PETSc shared library.")
-
-    for exists_path in exists_paths:
-        try:
-            petsc_lib = loader(exists_path)
-        except OSError:
-            print(f"Failed to load shared library found at {exists_path}.")
-            continue
-
-    if petsc_lib is None:
-        raise RuntimeError("Failed to load a PETSc shared library.")
-
-    return petsc_lib
