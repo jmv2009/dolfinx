@@ -137,14 +137,43 @@ double assemble_matrix1(const mesh::Geometry<T>& g, const fem::DofMap& dofmap,
                                 {dofmap.index_map_bs(), dofmap.index_map_bs()});
   fem::sparsitybuild::cells(sp, cells, {dofmap, dofmap});
   sp.finalize();
-  la::MatrixCSR<T> A(sp);
-  auto ident = [](auto, auto, auto, auto) {}; // DOF permutation not required
-  common::Timer timer("Assembler1 (matrix)");
-  fem::impl::assemble_cells(A.mat_add_values(), g.dofmap(), g.x(), cells, ident,
-                            dofmap.map(), 1, ident, dofmap.map(), 1, {}, {},
-                            kernel, std::span<const T>(), 0, {}, {});
-  A.scatter_rev();
-  return A.squared_norm();
+  {
+    la::MatrixCSR<T> A(sp);
+    auto ident = [](auto, auto, auto, auto) {}; // DOF permutation not required
+    common::Timer timer("Assembler1 (matrix, D)");
+    fem::impl::assemble_cells(A.mat_add_values(), g.dofmap(), g.x(), cells,
+                              ident, dofmap.map(), 1, ident, dofmap.map(), 1,
+                              {}, {}, kernel, std::span<const T>(), 0, {}, {});
+    A.scatter_rev();
+  }
+
+  {
+
+    auto A = la::petsc::Matrix(la::petsc::create_matrix(MPI_COMM_WORLD, sp),
+                               false);
+    auto ident = [](auto, auto, auto, auto) {}; // DOF permutation not required
+    auto A_add = [A = A.mat()](std::span<const std::int32_t> rows,
+                               std::span<const std::int32_t> cols,
+                               std::span<const PetscScalar> vals) mutable -> int
+    {
+      PetscErrorCode ierr;
+      ierr = MatSetValuesLocal(A, rows.size(), rows.data(), cols.size(),
+                               cols.data(), vals.data(), ADD_VALUES);
+      return ierr;
+    };
+    common::Timer timer("Assembler1 (matrix, P)");
+    fem::impl::assemble_cells(A_add, g.dofmap(), g.x(), cells, ident,
+                              dofmap.map(), 1, ident, dofmap.map(), 1, {}, {},
+                              kernel, std::span<const T>(), 0, {}, {});
+    // fem::impl::assemble_cells(la::petsc::Matrix::set_fn(A.mat(), ADD_VALUES),
+    //                           g.dofmap(), g.x(), cells, ident, dofmap.map(),
+    //                           1, ident, dofmap.map(), 1, {}, {}, kernel,
+    //                           std::span<const T>(), 0, {}, {});
+    MatAssemblyBegin(A.mat(), MAT_FINAL_ASSEMBLY);
+    MatAssemblyEnd(A.mat(), MAT_FINAL_ASSEMBLY);
+  }
+  // return A.squared_norm();
+  return 0.0;
 }
 
 /// @brief Assemble a RHS vector using using a lambda kernel function.
@@ -185,7 +214,7 @@ void assemble(MPI_Comm comm)
 {
   // Create mesh
   auto mesh = std::make_shared<mesh::Mesh<T>>(mesh::create_rectangle<T>(
-      comm, {{{0, 0}, {1, 1}}}, {516, 116}, mesh::CellType::triangle));
+      comm, {{{0, 0}, {1, 1}}}, {1516, 1116}, mesh::CellType::triangle));
 
   // Create Basix P1 Lagrange element. This will be used to construct
   // basis functions inside the custom cell kernel.
@@ -256,16 +285,16 @@ void assemble(MPI_Comm comm)
   };
 
   // Assemble matrix and vector using std::function kernel
-  assemble_matrix0<T>(V, kernel_a, cells);
-  assemble_vector0<T>(V, kernel_L, cells);
+  // assemble_matrix0<T>(V, kernel_a, cells);
+  // assemble_vector0<T>(V, kernel_L, cells);
 
   // Assemble matrix and vector using lambda kernel. This version
   // supports efficient inlining of the kernel.
   assemble_matrix1<T>(mesh->geometry(), *V->dofmap(), kernel_a, cells);
-  assemble_vector1<T>(mesh->geometry(), *V->dofmap(), kernel_L, cells);
+  // assemble_vector1<T>(mesh->geometry(), *V->dofmap(), kernel_L, cells);
 
-  if constexpr (std::is_same_v<T, PetscScalar>)
-    assemble_vector2<T>(V);
+  // if constexpr (std::is_same_v<T, PetscScalar>)
+  //   assemble_vector2<T>(V);
 
   list_timings(comm, {TimingType::wall});
 }
@@ -274,8 +303,10 @@ int main(int argc, char* argv[])
 {
   dolfinx::init_logging(argc, argv);
   MPI_Init(&argc, &argv);
-  assemble<float>(MPI_COMM_WORLD);
+  PetscInitializeNoArguments();
+  // assemble<float>(MPI_COMM_WORLD);
   assemble<double>(MPI_COMM_WORLD);
+  PetscFinalize();
   MPI_Finalize();
   return 0;
 }
