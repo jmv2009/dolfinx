@@ -222,6 +222,10 @@ public:
 
   /// @brief Check if DOF transformations are needed for this element.
   ///
+  /// This function returns `true` if transformation are required beyond
+  /// simple permutations. See FiniteElement::needs_dof_permutations to
+  /// check if permutations are required.
+  ///
   /// DOF transformations will be needed for elements which might not be
   /// continuous when two neighbouring cells disagree on the orientation
   /// of a shared sub-entity, and when this cannot be corrected for by
@@ -248,10 +252,11 @@ public:
   /// this can be corrected for by permuting the DOF numbers on each
   /// cell.
   ///
-  /// @return True if DOF transformations are required
+  /// @return True if DOF permutations are required.
   bool needs_dof_permutations() const noexcept;
 
-  /// Return a function that applies DOF transformation to some data.
+  /// @brief Return a function that applies DOF transformation to some
+  /// data.
   ///
   /// The returned function will take four inputs:
   /// - [in,out] data The data to be transformed. This data is flattened
