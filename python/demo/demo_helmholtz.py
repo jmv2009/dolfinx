@@ -50,7 +50,6 @@ deg = 1
 n_elem = 128
 
 msh = create_unit_square(MPI.COMM_WORLD, n_elem, n_elem)
-n = ufl.FacetNormal(msh)
 
 # Source amplitude
 if np.issubdtype(dolfinx.default_scalar_type, np.complexfloating):  # type: ignore

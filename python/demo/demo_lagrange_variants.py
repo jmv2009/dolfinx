@@ -18,6 +18,7 @@
 # We begin this demo by importing the required modules.
 
 import typing
+
 from mpi4py import MPI
 from dolfinx import has_petsc
 if has_petsc:
@@ -35,7 +36,7 @@ import numpy as np
 
 import basix
 import basix.ufl
-import ufl   # type: ignore
+import ufl  # type: ignore
 from dolfinx import default_scalar_type, fem, mesh
 from ufl import ds, dx, grad, inner
 
