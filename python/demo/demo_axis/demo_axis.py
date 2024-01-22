@@ -115,10 +115,12 @@ except ModuleNotFoundError:
 # cylindrical harmonics:
 #
 # $$
+# \begin{align}
 # \mathbf{E}_s(\rho, z, \phi) &= \sum_m\mathbf{E}^{(m)}_s(\rho, z)e^{-jm\phi} \\
 # \mathbf{E}_b(\rho, z, \phi) &= \sum_m\mathbf{E}^{(m)}_b(\rho, z)e^{-jm\phi} \\
 # \bar{\mathbf{v}}(\rho, z, \phi) &=
 # \sum_m\bar{\mathbf{v}}^{(m)}(\rho, z)e^{+jm\phi}
+# \end{align}
 # $$
 #
 # The curl operator $\nabla\times$ in cylindrical coordinates becomes:
@@ -246,11 +248,13 @@ def background_field_p(theta: float, n_bkg: float, k0: float, m: int, x):
 # PML:
 #
 # $$
+# \begin{align}
 # &\rho^{\prime} = \rho\left[1 +j \alpha/k_0 \left(\frac{r
 # - r_{dom}}{r~r_{pml}}\right)\right] \\
 # &z^{\prime} = z\left[1 +j \alpha/k_0 \left(\frac{r
 # - r_{dom}}{r~r_{pml}}\right)\right] \\
 # &\phi^{\prime} = \phi
+# \end{align}
 # $$
 #
 # with $\alpha$ tuning the absorption inside the PML, and $r =
@@ -281,10 +285,12 @@ def background_field_p(theta: float, n_bkg: float, k0: float, m: int, x):
 # ${\boldsymbol{\mu}_{pml}}$:
 #
 # $$
+# \begin{align}
 # & {\boldsymbol{\varepsilon}_{pml}} =
 # A^{-1} \mathbf{A} {\boldsymbol{\varepsilon}_b}\mathbf{A}^{T}\\
 # & {\boldsymbol{\mu}_{pml}} =
 # A^{-1} \mathbf{A} {\boldsymbol{\mu}_b}\mathbf{A}^{T}
+# \end{align}
 # $$
 #
 # For doing these calculations, we define the `pml_coordinate` and
@@ -430,17 +436,21 @@ I0 = 0.5 * n_bkg / Z0  # Intensity
 # to few harmonic numbers, e.g., $m = -1, 0, 1$. Besides, we have that:
 #
 # $$
+# \begin{align}
 # &J_{-m}=(-1)^m J_m \\
 # &J_{-m}^{\prime}=(-1)^m J_m^{\prime} \\
 # &j^{-m}=(-1)^m j^m
+# \end{align}
 # $$
 #
 # and therefore:
 #
 # $$
+# \begin{align}
 # &E_{b, \rho}^{(m)}=E_{b, \rho}^{(-m)} \\
 # &E_{b, \phi}^{(m)}=-E_{b, \phi}^{(-m)} \\
 # &E_{b, z}^{(m)}=E_{b, z}^{(-m)}
+# \end{align}
 # $$
 #
 # In light of this, we can solve the problem for $m\geq 0$.
@@ -495,9 +505,11 @@ dS = ufl.Measure("dS", msh, subdomain_data=facet_tags)
 # following way:
 #
 # $$
+# \begin{align}
 # &E_{s, \rho}^{(m)}(\phi)=E_{s, \rho}^{(m)}(e^{-jm\phi}+e^{jm\phi}) \\
 # &E_{s, \phi}^{(m)}(\phi)=E_{s, \phi}^{(m)}(e^{-jm\phi}-e^{jm\phi}) \\
 # &E_{s, z}^{(m)}(\phi)=E_{s, z}^{(m)}(e^{-jm\phi}+e^{jm\phi})
+# \end{align}
 # $$
 #
 # For this reason, we also add a `phase` constant for the above phase
