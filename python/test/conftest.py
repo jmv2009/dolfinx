@@ -155,11 +155,11 @@ def cg_solver():
 
         A_op = A.to_scipy()
         nr = A_op.shape[0]
-        assert nr == A.index_map(0).size_local
+        assert nr == A.index_map(0).size_local * A.block_size[0]
 
         # Create larger ghosted vector based on matrix column space
         # and get initial y = A.x
-        p = dolfinx_vector(A.index_map(1), dtype=x.array.dtype)
+        p = dolfinx_vector(A.index_map(1), bs=A.block_size[1], dtype=x.array.dtype)
         p.array[:nr] = x.array[:nr]
         p.scatter_forward()
         y = A_op @ p.array
