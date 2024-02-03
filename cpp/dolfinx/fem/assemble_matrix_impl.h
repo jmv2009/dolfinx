@@ -374,6 +374,7 @@ void assemble_matrix(
   assert(element0);
   auto element1 = a.function_spaces().at(1)->element();
   assert(element1);
+  auto ident = [](auto, auto, auto, auto) {}; // DOF permutation not required
   fem::DofTransformKernel<T> auto pre_dof_transform
       = element0->template get_pre_dof_transformation_function<T>();
   fem::DofTransformKernel<T> auto post_dof_transform
@@ -392,10 +393,21 @@ void assemble_matrix(
     auto fn = a.kernel(IntegralType::cell, i);
     assert(fn);
     auto& [coeffs, cstride] = coefficients.at({IntegralType::cell, i});
-    impl::assemble_cells(mat_set, x_dofmap, x, a.domain(IntegralType::cell, i),
-                         pre_dof_transform, dofs0, bs0, post_dof_transform,
-                         dofs1, bs1, bc0, bc1, fn, coeffs, cstride, constants,
-                         cell_info);
+    if (element0->needs_dof_transformations()
+        or element1->needs_dof_transformations())
+    {
+      impl::assemble_cells(mat_set, x_dofmap, x,
+                           a.domain(IntegralType::cell, i), pre_dof_transform,
+                           dofs0, bs0, post_dof_transform, dofs1, bs1, bc0, bc1,
+                           fn, coeffs, cstride, constants, cell_info);
+    }
+    else
+    {
+      impl::assemble_cells(mat_set, x_dofmap, x,
+                           a.domain(IntegralType::cell, i), ident, dofs0, bs0,
+                           ident, dofs1, bs1, bc0, bc1, fn, coeffs, cstride,
+                           constants, cell_info);
+    }
   }
 
   for (int i : a.integral_ids(IntegralType::exterior_facet))
