@@ -5,22 +5,23 @@
 # SPDX-License-Identifier:    LGPL-3.0-or-later
 """Unit tests for the DiscreteOperator class"""
 import pytest
+
 import dolfinx
+
 if not dolfinx.has_petsc:
     pytest.skip(allow_module_level=True)
 
 from mpi4py import MPI
 from petsc4py import PETSc
+
 import numpy as np
 
 import ufl
 from basix.ufl import element
 from dolfinx import default_real_type
 from dolfinx.cpp.fem.petsc import discrete_gradient, interpolation_matrix
-from dolfinx.fem import (Expression, Function, assemble_scalar, form,
-                         functionspace)
-from dolfinx.mesh import (CellType, GhostMode, create_mesh, create_unit_cube,
-                          create_unit_square)
+from dolfinx.fem import Expression, Function, assemble_scalar, form, functionspace
+from dolfinx.mesh import CellType, GhostMode, create_mesh, create_unit_cube, create_unit_square
 
 
 @pytest.mark.skip_in_parallel

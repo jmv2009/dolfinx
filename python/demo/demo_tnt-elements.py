@@ -21,7 +21,9 @@
 # We begin this demo by importing the required modules.
 
 from mpi4py import MPI
+
 from dolfinx import has_petsc
+
 if has_petsc:
     from dolfinx.fem.petsc import LinearProblem
 else:
@@ -31,17 +33,16 @@ else:
         exit(0)
 
 # +
-import matplotlib
+import matplotlib as mpl
 import matplotlib.pylab as plt
 import numpy as np
 
 import basix
 import basix.ufl
 from dolfinx import fem, mesh
-from ufl import (SpatialCoordinate, TestFunction, TrialFunction, cos, div, dx,
-                 grad, inner, sin)
+from ufl import SpatialCoordinate, TestFunction, TrialFunction, cos, div, dx, grad, inner, sin
 
-matplotlib.use('agg')
+mpl.use('agg')
 # -
 
 # ## Defining a degree 1 TNT element

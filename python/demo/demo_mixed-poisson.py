@@ -94,10 +94,13 @@
 # +
 
 from mpi4py import MPI
+
 from dolfinx import has_petsc
+
 if has_petsc:
-    from dolfinx.fem.petsc import LinearProblem
     from petsc4py import PETSc
+
+    from dolfinx.fem.petsc import LinearProblem
 else:
     from dolfinx.fem.solver import LinearProblem  # type: ignore
     if MPI.COMM_WORLD.size > 1:
@@ -108,8 +111,7 @@ import numpy as np
 
 from basix.ufl import element, mixed_element
 from dolfinx import fem, io, mesh
-from ufl import (Measure, SpatialCoordinate, TestFunctions, TrialFunctions,
-                 div, exp, inner)
+from ufl import Measure, SpatialCoordinate, TestFunctions, TrialFunctions, div, exp, inner
 
 msh = mesh.create_unit_square(MPI.COMM_WORLD, 32, 32, mesh.CellType.quadrilateral)
 

@@ -1,22 +1,16 @@
-import pytest
-import dolfinx
-
 from mpi4py import MPI
 
 import numpy as np
+import pytest
 
 import basix
 import basix.ufl
 import ufl
-from dolfinx.fem import (Function, assemble_scalar, dirichletbc, form,
-                         functionspace, locate_dofs_topological)
-from dolfinx.fem import (apply_lifting, assemble_matrix, assemble_vector,
-                         set_bc)
+from dolfinx.fem import (Function, apply_lifting, assemble_matrix, assemble_scalar, assemble_vector, dirichletbc, form,
+                         functionspace, locate_dofs_topological, set_bc)
 from dolfinx.la import InsertMode
-from dolfinx.mesh import (CellType, create_unit_cube, create_unit_square,
-                          exterior_facet_indices)
-from ufl import (SpatialCoordinate, TestFunction, TrialFunction, div, dx, grad,
-                 inner)
+from dolfinx.mesh import CellType, create_unit_cube, create_unit_square, exterior_facet_indices
+from ufl import SpatialCoordinate, TestFunction, TrialFunction, div, dx, grad, inner
 
 
 def run_scalar_test(V, degree, cg_solver):
@@ -61,7 +55,7 @@ def run_scalar_test(V, degree, cg_solver):
     # Create LU linear solver
     uh = Function(V)
     cg_solver(MPI.COMM_WORLD, A, b, uh.x)
-    
+
     M = (u_exact - uh)**2 * dx
     M = form(M)
     error = mesh.comm.allreduce(assemble_scalar(M), op=MPI.SUM)

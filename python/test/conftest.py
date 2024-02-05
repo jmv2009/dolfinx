@@ -3,12 +3,13 @@ import os
 import shutil
 import time
 from collections import defaultdict
-from dolfinx.la import vector as dolfinx_vector
-import numpy as np
 
 from mpi4py import MPI
 
+import numpy as np
 import pytest
+
+from dolfinx.la import vector as dolfinx_vector
 
 
 def pytest_runtest_teardown(item):
@@ -32,7 +33,7 @@ def pytest_runtest_teardown(item):
 def pytest_runtest_setup(item):
     marker = item.get_closest_marker("skip_in_parallel")
     if marker and MPI.COMM_WORLD.size > 1:
-        pytest.skip("This test should only be run in serial")
+        pytest.skip("This test should be run in serial only.")
 
 
 @pytest.fixture(scope="module")

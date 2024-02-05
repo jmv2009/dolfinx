@@ -5,7 +5,9 @@
 # SPDX-License-Identifier:    LGPL-3.0-or-later
 """Unit tests for Newton solver assembly"""
 import pytest
+
 import dolfinx
+
 if not dolfinx.has_petsc:
     pytest.skip(allow_module_level=True)
 
@@ -17,10 +19,8 @@ import numpy as np
 import ufl
 from dolfinx import cpp as _cpp
 from dolfinx import default_real_type
-from dolfinx.fem import (Function, dirichletbc, form, functionspace,
-                         locate_dofs_geometrical)
-from dolfinx.fem.petsc import (apply_lifting, assemble_matrix, assemble_vector,
-                               create_matrix, create_vector, set_bc)
+from dolfinx.fem import Function, dirichletbc, form, functionspace, locate_dofs_geometrical
+from dolfinx.fem.petsc import apply_lifting, assemble_matrix, assemble_vector, create_matrix, create_vector, set_bc
 from dolfinx.la import create_petsc_vector
 from dolfinx.mesh import create_unit_square
 from ufl import TestFunction, TrialFunction, derivative, dx, grad, inner

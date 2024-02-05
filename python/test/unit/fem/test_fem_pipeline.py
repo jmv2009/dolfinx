@@ -5,33 +5,29 @@
 # SPDX-License-Identifier:    LGPL-3.0-or-later
 
 from pathlib import Path
-import pytest
-import dolfinx
 
 from mpi4py import MPI
+
 import numpy as np
+import pytest
 
 import basix
 import ufl
 from basix.ufl import element, mixed_element
-from dolfinx import default_real_type
-from dolfinx.fem import (Function, assemble_scalar, dirichletbc, form,
-                         functionspace, locate_dofs_topological)
-from dolfinx.fem import (apply_lifting, assemble_matrix, assemble_vector,
-                         set_bc)
-from dolfinx.la import InsertMode
+from dolfinx import default_real_type, has_petsc
+from dolfinx.fem import (Function, apply_lifting, assemble_matrix, assemble_scalar, assemble_vector, dirichletbc, form,
+                         functionspace, locate_dofs_topological, set_bc)
 from dolfinx.io import XDMFFile
-from dolfinx.mesh import (CellType, create_rectangle, create_unit_cube,
-                          create_unit_square, exterior_facet_indices,
+from dolfinx.la import InsertMode
+from dolfinx.mesh import (CellType, create_rectangle, create_unit_cube, create_unit_square, exterior_facet_indices,
                           locate_entities_boundary)
-from ufl import (CellDiameter, FacetNormal, SpatialCoordinate, TestFunction,
-                 TrialFunction, avg, div, ds, dS, dx, grad, inner, jump)
+from ufl import (CellDiameter, FacetNormal, SpatialCoordinate, TestFunction, TrialFunction, avg, div, ds, dS, dx, grad,
+                 inner, jump)
 
-from dolfinx import has_petsc
 if has_petsc:
     from petsc4py import PETSc
-    import dolfinx.fem.petsc as dolfinx_petsc
 
+    import dolfinx.fem.petsc as dolfinx_petsc
 
 
 def run_scalar_test(mesh, V, degree, cg_solver):
@@ -83,7 +79,7 @@ def run_scalar_test(mesh, V, degree, cg_solver):
     M = form(M)
     error = mesh.comm.allreduce(assemble_scalar(M), op=MPI.SUM)
     assert np.abs(error) < 1.0e-9
-    
+
 
 def run_vector_test(mesh, V, degree, cg_solver):
     """Projection into H(div/curl) spaces"""
@@ -166,7 +162,7 @@ def run_dg_test(mesh, V, degree, cg_solver):
     A.scatter_reverse()
 
     # Create linear solver
-    
+
     # Solve
     uh = Function(V)
     cg_solver(mesh.comm, A, b, uh.x)
@@ -313,7 +309,7 @@ def test_biharmonic(family):
     A.assemble()
     b = dolfinx_petsc.assemble_vector(L)
     dolfinx_petsc.apply_lifting(b, [a], bcs=[bcs])
-    b.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE) 
+    b.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
     set_bc(b, bcs)
 
     # Solve

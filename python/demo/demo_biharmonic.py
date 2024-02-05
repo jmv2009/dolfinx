@@ -111,7 +111,9 @@
 # We first import the modules and functions that the program uses:
 
 from mpi4py import MPI
+
 from dolfinx import has_petsc
+
 if has_petsc:
     from dolfinx.fem.petsc import LinearProblem
 else:
@@ -121,16 +123,14 @@ else:
         exit(0)
 
 
-from dolfinx import default_scalar_type  # type: ignore
-
 # +
 import numpy as np
 
 import ufl
+from dolfinx import default_scalar_type  # type: ignore
 from dolfinx import fem, io, mesh, plot
 from dolfinx.mesh import CellType, GhostMode
-from ufl import (CellDiameter, FacetNormal, avg, div, dS, dx, grad, inner,
-                 jump, pi, sin)
+from ufl import CellDiameter, FacetNormal, avg, div, dS, dx, grad, inner, jump, pi, sin
 
 # -
 

@@ -16,13 +16,14 @@
 
 # +
 from dolfinx import has_petsc
+
 if not has_petsc:
     print("This demo requires PETSc")
     exit(0)
 
 import sys
 from functools import partial
-from typing import Tuple, Union
+from typing import Union
 
 from mpi4py import MPI
 
@@ -363,7 +364,7 @@ y_pml = ufl.as_vector((x[0], pml_coordinates(x[1], alpha, k0, l_dom, l_pml)))
 
 def create_eps_mu(pml: ufl.tensors.ListTensor,
                   eps_bkg: Union[float, ufl.tensors.ListTensor],
-                  mu_bkg: Union[float, ufl.tensors.ListTensor]) -> Tuple[ufl.tensors.ComponentTensor,
+                  mu_bkg: Union[float, ufl.tensors.ListTensor]) -> tuple[ufl.tensors.ComponentTensor,
                                                                          ufl.tensors.ComponentTensor]:
     J = ufl.grad(pml)
 

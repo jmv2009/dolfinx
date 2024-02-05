@@ -6,16 +6,17 @@ import datetime
 import os
 import sys
 
+import jupytext_process
+
 import dolfinx
 from dolfinx.cpp.common import has_petsc
+
 if has_petsc:
     tags.add("petsc") # noqa
 
 print(tags.has("petsc")) # noqa
 
 sys.path.insert(0, os.path.abspath("."))
-
-import jupytext_process  # noqa
 
 myst_heading_anchors = 3
 
