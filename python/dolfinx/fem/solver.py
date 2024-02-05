@@ -1,10 +1,11 @@
 
 import typing
+
 from scipy.sparse.linalg import spsolve
 
 import ufl
 from dolfinx import default_scalar_type
-from dolfinx.fem import assemble_matrix, assemble_vector, apply_lifting, set_bc
+from dolfinx.fem import apply_lifting, assemble_matrix, assemble_vector, set_bc
 from dolfinx.fem.bcs import DirichletBC
 from dolfinx.fem.forms import form as _create_form
 from dolfinx.fem.function import Function as _Function
@@ -16,7 +17,7 @@ class LinearProblem:
 
     """
 
-    def __init__(self, a: ufl.Form, L: ufl.Form, bcs: typing.List[DirichletBC] = [],
+    def __init__(self, a: ufl.Form, L: ufl.Form, bcs: list[DirichletBC] = [],
                  u: typing.Optional[_Function] = None,
                  dtype=default_scalar_type,
                  form_compiler_options: typing.Optional[dict] = None,
