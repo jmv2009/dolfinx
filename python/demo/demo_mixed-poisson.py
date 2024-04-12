@@ -103,6 +103,7 @@ if has_petsc:
     from dolfinx.fem.petsc import LinearProblem
 else:
     from dolfinx.fem.solver import LinearProblem  # type: ignore
+
     if MPI.COMM_WORLD.size > 1:
         print("Need to use PETSc in parallel")
         exit(0)
@@ -169,8 +170,16 @@ bc_bottom = fem.dirichletbc(f_h2, dofs_bottom, V0)
 bcs = [bc_top, bc_bottom]
 
 if has_petsc:
-    problem = LinearProblem(a, L, bcs=bcs, petsc_options={"ksp_type": "preonly", "pc_type": "lu",
-                                                          "pc_factor_mat_solver_type": "mumps"})
+    problem = LinearProblem(
+        a,
+        L,
+        bcs=bcs,
+        petsc_options={
+            "ksp_type": "preonly",
+            "pc_type": "lu",
+            "pc_factor_mat_solver_type": "mumps",
+        },
+    )
     try:
         w_h = problem.solve()
     except PETSc.Error as e:  # type: ignore

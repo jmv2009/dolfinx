@@ -20,11 +20,14 @@
 # Solutions is used to produce the exact solution and source term.
 
 from mpi4py import MPI
+
 from dolfinx import has_petsc
+
 if has_petsc:
     from dolfinx.fem.petsc import LinearProblem
 else:
     from dolfinx.fem.solver import LinearProblem  # type: ignore
+
     if MPI.COMM_WORLD.size > 1:
         print("Need to use PETSc in parallel")
         exit(0)
@@ -33,10 +36,10 @@ else:
 # +
 import numpy as np
 
+import dolfinx
 import ufl
 from dolfinx.fem import Function, assemble_scalar, form, functionspace
 from dolfinx.io import XDMFFile
-import dolfinx
 from dolfinx.mesh import create_unit_square
 from ufl import dx, grad, inner
 
@@ -78,7 +81,9 @@ else:
 problem.solve()
 
 # Save solution in XDMF format (to be viewed in ParaView, for example)
-with XDMFFile(MPI.COMM_WORLD, "out_helmholtz/plane_wave.xdmf", "w", encoding=XDMFFile.Encoding.HDF5) as file:
+with XDMFFile(
+    MPI.COMM_WORLD, "out_helmholtz/plane_wave.xdmf", "w", encoding=XDMFFile.Encoding.HDF5
+) as file:
     file.write_mesh(msh)
     file.write_function(uh)
 # -
@@ -96,7 +101,9 @@ u_exact.interpolate(lambda x: A * np.cos(k0 * x[0]) * np.cos(k0 * x[1]))
 # H1 errors
 diff = uh - u_exact
 H1_diff = msh.comm.allreduce(assemble_scalar(form(inner(grad(diff), grad(diff)) * dx)), op=MPI.SUM)
-H1_exact = msh.comm.allreduce(assemble_scalar(form(inner(grad(u_exact), grad(u_exact)) * dx)), op=MPI.SUM)
+H1_exact = msh.comm.allreduce(
+    assemble_scalar(form(inner(grad(u_exact), grad(u_exact)) * dx)), op=MPI.SUM
+)
 print("Relative H1 error of FEM solution:", abs(np.sqrt(H1_diff) / np.sqrt(H1_exact)))
 
 # L2 errors

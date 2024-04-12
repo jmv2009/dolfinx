@@ -7,15 +7,17 @@
 from __future__ import annotations
 
 from dolfinx.cpp.common import has_petsc
+
 if not has_petsc:
     raise ImportError("dolfinx has not been compiled with PETSc")
 
 import typing
 
 if typing.TYPE_CHECKING:
-    from dolfinx.fem.problem import NonlinearProblem
     from mpi4py import MPI
     from petsc4py import PETSc
+
+    from dolfinx.fem.problem import NonlinearProblem
 
 import types
 
