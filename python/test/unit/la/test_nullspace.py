@@ -4,6 +4,12 @@
 #
 # SPDX-License-Identifier:    LGPL-3.0-or-later
 """Unit tests for nullspaces"""
+import pytest
+
+import dolfinx
+
+if not dolfinx.has_petsc:
+    pytest.skip(allow_module_level=True)
 
 from contextlib import ExitStack
 
@@ -11,7 +17,6 @@ from mpi4py import MPI
 from petsc4py import PETSc
 
 import numpy as np
-import pytest
 
 import ufl
 from dolfinx import la
