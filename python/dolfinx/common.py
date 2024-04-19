@@ -16,6 +16,7 @@ from dolfinx.cpp.common import (
     has_debug,
     has_kahip,
     has_parmetis,
+    has_petsc,
 )
 
 __all__ = [
@@ -27,6 +28,7 @@ __all__ = [
     "has_debug",
     "has_kahip",
     "has_parmetis",
+    "has_petsc",
 ]
 
 TimingType = _cpp.common.TimingType
