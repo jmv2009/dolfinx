@@ -31,6 +31,7 @@ from dolfinx.common import (
     has_debug,
     has_kahip,
     has_parmetis,
+    has_petsc,
     list_timings,
     timing,
 )
