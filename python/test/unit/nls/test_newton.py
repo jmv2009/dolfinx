@@ -4,6 +4,12 @@
 #
 # SPDX-License-Identifier:    LGPL-3.0-or-later
 """Unit tests for Newton solver assembly"""
+import pytest
+
+import dolfinx
+
+if not dolfinx.has_petsc:
+    pytest.skip(allow_module_level=True)
 
 from mpi4py import MPI
 from petsc4py import PETSc

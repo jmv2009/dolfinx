@@ -23,13 +23,11 @@ def get_petsc_lib() -> pathlib.Path:
         Full path to the PETSc shared library.
 
     Raises:
-        RuntimeError: If PETSc library cannot be found for if more than
+        ImportError: If petsc4py cannot be found.
+        RuntimeError: If PETSc library cannot be found or if more than
             one library is found.
     """
-    try:
-        import petsc4py as _petsc4py
-    except ImportError:
-        return None
+    import petsc4py as _petsc4py
 
     petsc_dir = _petsc4py.get_config()["PETSC_DIR"]
     petsc_arch = _petsc4py.lib.getPathArchPETSc()[1]
