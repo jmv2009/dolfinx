@@ -72,19 +72,21 @@ nanobind_add_module(
 target_link_libraries(cpp PRIVATE dolfinx)
 
 # Check for petsc4py
-execute_process(
-  COMMAND ${Python_EXECUTABLE} -c
-          "import petsc4py; print(petsc4py.get_include())"
-  OUTPUT_VARIABLE PETSC4PY_INCLUDE_DIR
-  RESULT_VARIABLE PETSC4PY_COMMAND_RESULT
-  ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE
-)
+if(PETSC_FOUND)
+  execute_process(
+    COMMAND ${Python_EXECUTABLE} -c
+    "import petsc4py; print(petsc4py.get_include())"
+    OUTPUT_VARIABLE PETSC4PY_INCLUDE_DIR
+    RESULT_VARIABLE PETSC4PY_COMMAND_RESULT
+    ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE
+  )
 
-if(NOT PETSC4PY_COMMAND_RESULT)
-  message(STATUS "Found petsc4py include directory at ${PETSC4PY_INCLUDE_DIR}")
-  target_include_directories(cpp PRIVATE ${PETSC4PY_INCLUDE_DIR})
-else()
-  message(FATAL_ERROR "petsc4py could not be found.")
+  if(NOT PETSC4PY_COMMAND_RESULT)
+    message(STATUS "Found petsc4py include directory at ${PETSC4PY_INCLUDE_DIR}")
+    target_include_directories(cpp PRIVATE ${PETSC4PY_INCLUDE_DIR})
+  else()
+    message(FATAL_ERROR "petsc4py could not be found.")
+  endif()
 endif()
 
 # Check for mpi4py
