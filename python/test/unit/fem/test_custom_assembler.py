@@ -5,6 +5,13 @@
 # SPDX-License-Identifier:    LGPL-3.0-or-later
 """Tests for custom Python assemblers."""
 
+import pytest
+
+import dolfinx
+
+if not dolfinx.has_petsc:
+    pytest.skip(allow_module_level=True)
+
 import importlib
 import math
 import os
@@ -17,7 +24,6 @@ from petsc4py import PETSc
 from petsc4py import get_config as PETSc_get_config
 
 import numpy as np
-import pytest
 
 import dolfinx
 import dolfinx.pkgconfig

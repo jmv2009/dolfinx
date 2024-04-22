@@ -4,6 +4,7 @@
 #
 # SPDX-License-Identifier:    LGPL-3.0-or-later
 """Unit tests for the DiscreteOperator class"""
+
 import pytest
 
 import dolfinx

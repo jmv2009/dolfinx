@@ -5,13 +5,19 @@
 # SPDX-License-Identifier:    LGPL-3.0-or-later
 """Unit tests for assembly"""
 
+import pytest
+
+import dolfinx
+
+if not dolfinx.has_petsc:
+    pytest.skip(allow_module_level=True)
+
 import math
 
 from mpi4py import MPI
 from petsc4py import PETSc
 
 import numpy as np
-import pytest
 
 import ufl
 from basix.ufl import element, mixed_element
