@@ -8,7 +8,6 @@
 import math
 
 from mpi4py import MPI
-from petsc4py import PETSc
 
 import numpy as np
 import pytest
@@ -18,7 +17,7 @@ import basix
 import ufl
 from basix.ufl import element, mixed_element
 from dolfinx import cpp as _cpp
-from dolfinx import default_real_type, fem, graph, la
+from dolfinx import default_real_type, fem, graph, has_petsc, la
 from dolfinx.fem import (
     Constant,
     Function,
@@ -31,16 +30,21 @@ from dolfinx.fem import (
     locate_dofs_geometrical,
     locate_dofs_topological,
 )
-from dolfinx.fem.petsc import apply_lifting as petsc_apply_lifting
-from dolfinx.fem.petsc import apply_lifting_nest as petsc_apply_lifting_nest
-from dolfinx.fem.petsc import assemble_matrix as petsc_assemble_matrix
-from dolfinx.fem.petsc import assemble_matrix_block as petsc_assemble_matrix_block
-from dolfinx.fem.petsc import assemble_matrix_nest as petsc_assemble_matrix_nest
-from dolfinx.fem.petsc import assemble_vector as petsc_assemble_vector
-from dolfinx.fem.petsc import assemble_vector_block as petsc_assemble_vector_block
-from dolfinx.fem.petsc import assemble_vector_nest as petsc_assemble_vector_nest
-from dolfinx.fem.petsc import set_bc as petsc_set_bc
-from dolfinx.fem.petsc import set_bc_nest as petsc_set_bc_nest
+
+if has_petsc:
+    from petsc4py import PETSc
+
+    from dolfinx.fem.petsc import apply_lifting as petsc_apply_lifting
+    from dolfinx.fem.petsc import apply_lifting_nest as petsc_apply_lifting_nest
+    from dolfinx.fem.petsc import assemble_matrix as petsc_assemble_matrix
+    from dolfinx.fem.petsc import assemble_matrix_block as petsc_assemble_matrix_block
+    from dolfinx.fem.petsc import assemble_matrix_nest as petsc_assemble_matrix_nest
+    from dolfinx.fem.petsc import assemble_vector as petsc_assemble_vector
+    from dolfinx.fem.petsc import assemble_vector_block as petsc_assemble_vector_block
+    from dolfinx.fem.petsc import assemble_vector_nest as petsc_assemble_vector_nest
+    from dolfinx.fem.petsc import set_bc as petsc_set_bc
+    from dolfinx.fem.petsc import set_bc_nest as petsc_set_bc_nest
+
 from dolfinx.mesh import (
     CellType,
     GhostMode,
@@ -169,6 +173,7 @@ def test_basic_assembly(mode, dtype):
     assert 4 * normA == pytest.approx(A.squared_norm())
 
 
+@pytest.mark.skipif(not has_petsc, reason="Needs PETSc")
 @pytest.mark.parametrize("mode", [GhostMode.none, GhostMode.shared_facet])
 def test_basic_assembly_petsc_matrixcsr(mode):
     mesh = create_unit_square(MPI.COMM_WORLD, 12, 12, ghost_mode=mode)
@@ -199,6 +204,7 @@ def test_basic_assembly_petsc_matrixcsr(mode):
     A1.destroy()
 
 
+@pytest.mark.skipif(not has_petsc, reason="Needs PETSc")
 @pytest.mark.parametrize("mode", [GhostMode.none, GhostMode.shared_facet])
 def test_assembly_bcs(mode):
     mesh = create_unit_square(MPI.COMM_WORLD, 12, 12, ghost_mode=mode)
@@ -233,6 +239,7 @@ def test_assembly_bcs(mode):
     A.destroy(), b.destroy(), g.destroy()
 
 
+@pytest.mark.skipif(not has_petsc, reason="Needs PETSc")
 @pytest.mark.skip_in_parallel
 def test_petsc_assemble_manifold():
     """Test assembly of poisson problem on a mesh with topological
@@ -276,6 +283,7 @@ def test_petsc_assemble_manifold():
     A.destroy(), b.destroy()
 
 
+@pytest.mark.skipif(not has_petsc, reason="Needs PETSc")
 @pytest.mark.parametrize("mode", [GhostMode.none, GhostMode.shared_facet])
 def test_matrix_assembly_block(mode):
     """Test assembly of block matrices and vectors into (a) monolithic
@@ -405,6 +413,7 @@ def test_matrix_assembly_block(mode):
     assert bnorm2 == pytest.approx(bnorm0, 1.0e-6)
 
 
+@pytest.mark.skipif(not has_petsc, reason="Needs PETSc")
 @pytest.mark.parametrize("mode", [GhostMode.none, GhostMode.shared_facet])
 def test_assembly_solve_block(mode):
     """Solve a two-field mass-matrix like problem with block matrix approaches
@@ -548,6 +557,7 @@ def test_assembly_solve_block(mode):
     assert xnorm2 == pytest.approx(xnorm0, 1.0e-6)
 
 
+@pytest.mark.skipif(not has_petsc, reason="Needs PETSc")
 @pytest.mark.parametrize(
     "mesh",
     [
@@ -747,6 +757,7 @@ def test_assembly_solve_taylor_hood(mesh):
     assert Pnorm2 == pytest.approx(Pnorm1, 1.0e-6)
 
 
+@pytest.mark.skipif(not has_petsc, reason="Needs PETSc")
 def test_basic_interior_facet_assembly():
     mesh = create_rectangle(
         MPI.COMM_WORLD,
@@ -771,6 +782,7 @@ def test_basic_interior_facet_assembly():
     b.destroy()
 
 
+@pytest.mark.skipif(not has_petsc, reason="Needs PETSc")
 @pytest.mark.parametrize(
     "mesh",
     [
@@ -916,6 +928,7 @@ def test_lambda_assembler():
     assert np.isclose(s, 1.0)
 
 
+@pytest.mark.skipif(not has_petsc, reason="Needs PETSc")
 def test_pack_coefficients():
     """Test packing of form coefficients ahead of main assembly call."""
     mesh = create_unit_square(MPI.COMM_WORLD, 12, 15)
@@ -979,6 +992,7 @@ def test_pack_coefficients():
     A.destroy(), A0.destroy()
 
 
+@pytest.mark.skipif(not has_petsc, reason="Needs PETSc")
 def test_coefficents_non_constant():
     "Test packing coefficients with non-constant values"
     mesh = create_unit_square(MPI.COMM_WORLD, 3, 5)
@@ -1062,6 +1076,7 @@ def test_vector_types():
     assert np.linalg.norm(x0.array - x2.array) == pytest.approx(0.0, abs=1e-7)
 
 
+@pytest.mark.skipif(not has_petsc, reason="Needs PETSc")
 def test_assemble_empty_rank_mesh():
     """Assembly on mesh where some ranks are empty"""
     comm = MPI.COMM_WORLD
@@ -1116,6 +1131,7 @@ def test_assemble_empty_rank_mesh():
     ksp.destroy(), b.destroy(), A.destroy()
 
 
+@pytest.mark.skipif(not has_petsc, reason="Needs PETSc")
 @pytest.mark.parametrize("mode", [GhostMode.none, GhostMode.shared_facet])
 def test_matrix_assembly_rectangular(mode):
     """Test assembly of block rectangular block matrices"""
