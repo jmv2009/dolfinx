@@ -296,6 +296,10 @@ def test_curl_curl_eigenvalue(family, order):
 
 
 @pytest.mark.skipif(not has_petsc, reason="Needs PETSc")
+@pytest.mark.skipif(
+    np.issubdtype(PETSc.ScalarType, np.complexfloating),  # type: ignore
+    reason="This test does not work in complex mode.",
+)
 @pytest.mark.parametrize("family", ["HHJ", "Regge"])
 def test_biharmonic(family):
     """Manufactured biharmonic problem.
@@ -385,7 +389,7 @@ def test_biharmonic(family):
     solver.setOperators(A)
 
     x_h = Function(V)
-    solver.solve(b, x_h.vector)
+    solver.solve(b, x_h.x.petsc_vec)
     x_h.x.scatter_forward()
 
     # Recall that x_h has flattened indices
