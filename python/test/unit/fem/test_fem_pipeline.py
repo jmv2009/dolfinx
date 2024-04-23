@@ -111,7 +111,11 @@ def run_scalar_test(mesh, V, degree, cg_solver):
     M = (u_exact - uh) ** 2 * dx
     M = form(M)
     error = mesh.comm.allreduce(assemble_scalar(M), op=MPI.SUM)
-    assert np.abs(error) < 1.0e-9
+    if a.dtype == np.float32:
+        res = 1e-6
+    else:
+        res = 1e-9
+    assert np.abs(error) < res
 
 
 def run_vector_test(mesh, V, degree, cg_solver):
