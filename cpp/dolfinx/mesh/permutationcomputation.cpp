@@ -349,8 +349,9 @@ mesh::compute_entity_permutations(const mesh::Topology& topology)
 
   if (tdim > 1)
   {
-    const int edges_per_cell = cell_num_entities(cell_type, 1);
-    const auto edge_perm = compute_edge_reflections<_BITSETSIZE>(topology);
+    int edges_per_cell = cell_num_entities(cell_type, 1);
+    std::vector<std::bitset<_BITSETSIZE>> edge_perm
+        = compute_edge_reflections<_BITSETSIZE>(topology);
     for (int c = 0; c < num_cells; ++c)
       cell_permutation_info[c] |= edge_perm[c].to_ulong() << used_bits;
 
@@ -358,13 +359,16 @@ mesh::compute_entity_permutations(const mesh::Topology& topology)
     if (tdim == 2)
     {
       for (int c = 0; c < num_cells; ++c)
-      {
         for (int i = 0; i < facets_per_cell; ++i)
           facet_permutations[c * facets_per_cell + i] = edge_perm[c][i];
-      }
     }
   }
-  assert(used_bits < _BITSETSIZE);
+
+  if (used_bits >= _BITSETSIZE)
+  {
+    throw std::runtime_error(
+        "BITSETSIZE exceeded in mesh entity permutation computation.");
+  }
 
   return {std::move(facet_permutations), std::move(cell_permutation_info)};
 }
