@@ -910,14 +910,14 @@ void Topology::create_entity_permutations()
   if (!_cell_permutations.empty())
     return;
 
-  const int tdim = this->dim();
+  // const int tdim = this->dim();
 
-  // FIXME: Is this always required? Could it be made cheaper by doing a
-  // local version? This call does quite a lot of parallel work
-  // Create all mesh entities
+  // // FIXME: Is this always required? Could it be made cheaper by doing a
+  // // local version? This call does quite a lot of parallel work
+  // // Create all mesh entities
 
-  for (int d = 0; d < tdim; ++d)
-    create_entities(d);
+  // for (int d = 0; d < tdim; ++d)
+  //   create_entities(d);
 
   auto [facet_permutations, cell_permutations]
       = compute_entity_permutations(*this);

@@ -187,6 +187,9 @@ public:
   void create_connectivity(int d0, int d1);
 
   /// @brief Compute entity permutations and reflections.
+  /// @pre Mesh entities of dimension less than the topological
+  /// dimension of the mesh must gave been created before calling this
+  /// function.
   void create_entity_permutations();
 
   /// @brief List of inter-process facets, if facet topology has been
