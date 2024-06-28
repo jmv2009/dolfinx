@@ -69,12 +69,14 @@ void declare_function_space(nb::module_& m, std::string type)
     std::string pyclass_name = "FunctionSpace_" + type;
     nb::class_<dolfinx::fem::FunctionSpace<T>>(m, pyclass_name.c_str(),
                                                "Finite element function space")
-        .def(nb::init<std::shared_ptr<const dolfinx::mesh::Mesh<T>>,
-                      std::shared_ptr<const dolfinx::fem::FiniteElement<T>>,
-                      std::shared_ptr<const dolfinx::fem::DofMap>,
-                      std::vector<std::size_t>>(),
-             nb::arg("mesh"), nb::arg("element"), nb::arg("dofmap"),
-             nb::arg("value_shape"))
+        .def(
+            nb::init<std::shared_ptr<const dolfinx::mesh::Mesh<T>>,
+                     std::vector<
+                         std::shared_ptr<const dolfinx::fem::FiniteElement<T>>>,
+                     std::vector<std::shared_ptr<const dolfinx::fem::DofMap>>,
+                     std::vector<std::size_t>>(),
+            nb::arg("mesh"), nb::arg("elements"), nb::arg("dofmaps"),
+            nb::arg("value_shape"))
         .def("collapse", &dolfinx::fem::FunctionSpace<T>::collapse)
         .def("component", &dolfinx::fem::FunctionSpace<T>::component)
         .def("contains", &dolfinx::fem::FunctionSpace<T>::contains,

@@ -41,15 +41,17 @@ public:
   /// @param[in] element Finite element for the space.
   /// @param[in] dofmap Degree-of-freedom map for the space.
   /// @param[in] value_shape The shape of the value space on the physical cell
-  FunctionSpace(std::shared_ptr<const mesh::Mesh<geometry_type>> mesh,
-                std::shared_ptr<const FiniteElement<geometry_type>> element,
-                std::shared_ptr<const DofMap> dofmap,
-                std::vector<std::size_t> value_shape)
-      : _mesh(mesh), _element(element), _dofmap(dofmap),
+  FunctionSpace(
+      std::shared_ptr<const mesh::Mesh<geometry_type>> mesh,
+      std::vector<std::shared_ptr<const FiniteElement<geometry_type>>> elements,
+      std::vector<std::shared_ptr<const DofMap>> dofmaps,
+      std::vector<std::size_t> value_shape)
+      : _mesh(mesh), _elements(elements), _dofmaps(dofmaps),
         _id(boost::uuids::random_generator()()), _root_space_id(_id),
         _value_shape(value_shape)
   {
-    // Do nothing
+    if (_dofmaps.size() != _elements.size())
+      throw std::runtime_error("Incompatible size of dofmaps/elements");
   }
 
   // Copy constructor (deleted)
@@ -77,23 +79,25 @@ public:
   /// @return A subspace.
   FunctionSpace sub(const std::vector<int>& component) const
   {
+    if (_elements.size() > 1)
+      throw std::runtime_error("Multiple elements");
     assert(_mesh);
-    assert(_element);
-    assert(_dofmap);
+    assert(_elements[0]);
+    assert(_dofmaps[0]);
 
     // Check that component is valid
     if (component.empty())
       throw std::runtime_error("Component must be non-empty");
 
     // Extract sub-element
-    auto element = this->_element->extract_sub_element(component);
+    auto element = _elements[0]->extract_sub_element(component);
 
     // Extract sub dofmap
     auto dofmap
-        = std::make_shared<DofMap>(_dofmap->extract_sub_dofmap(component));
+        = std::make_shared<DofMap>(_dofmaps[0]->extract_sub_dofmap(component));
 
     // Create new sub space
-    FunctionSpace sub_space(_mesh, element, dofmap,
+    FunctionSpace sub_space(_mesh, {element}, {dofmap},
                             compute_value_shape(element,
                                                 _mesh->topology()->dim(),
                                                 _mesh->geometry().dim()));
@@ -146,20 +150,23 @@ public:
   /// @return The new function space and a map from new to old dofs
   std::pair<FunctionSpace, std::vector<std::int32_t>> collapse() const
   {
+    if (_elements.size() > 1)
+      throw std::runtime_error("Multiple elements");
+
     if (_component.empty())
       throw std::runtime_error("Function space is not a subspace");
 
     // Create collapsed DofMap
     auto [_collapsed_dofmap, collapsed_dofs]
-        = _dofmap->collapse(_mesh->comm(), *_mesh->topology());
+        = _dofmaps[0]->collapse(_mesh->comm(), *_mesh->topology());
     auto collapsed_dofmap
         = std::make_shared<DofMap>(std::move(_collapsed_dofmap));
 
-    return {
-        FunctionSpace(_mesh, _element, collapsed_dofmap,
-                      compute_value_shape(_element, _mesh->topology()->dim(),
-                                          _mesh->geometry().dim())),
-        std::move(collapsed_dofs)};
+    return {FunctionSpace(_mesh, _elements, {collapsed_dofmap},
+                          compute_value_shape(_elements[0],
+                                              _mesh->topology()->dim(),
+                                              _mesh->geometry().dim())),
+            std::move(collapsed_dofs)};
   }
 
   /// @brief Get the component with respect to the root superspace.
@@ -171,8 +178,11 @@ public:
   /// 2-tensor
   bool symmetric() const
   {
-    if (_element)
-      return _element->symmetric();
+    if (_elements.size() > 1)
+      throw std::runtime_error("Multiple elements");
+
+    if (_elements[0])
+      return _elements[0]->symmetric();
     return false;
   }
 
@@ -189,14 +199,17 @@ public:
   /// transposed. Storage is row-major.
   std::vector<geometry_type> tabulate_dof_coordinates(bool transpose) const
   {
+    if (_elements.size() > 1)
+      throw std::runtime_error("Multiple elements");
+
     if (!_component.empty())
     {
       throw std::runtime_error("Cannot tabulate coordinates for a "
                                "FunctionSpace that is a subspace.");
     }
 
-    assert(_element);
-    if (_element->is_mixed())
+    assert(_elements[0]);
+    if (_elements[0]->is_mixed())
     {
       throw std::runtime_error(
           "Cannot tabulate coordinates for a mixed FunctionSpace.");
@@ -204,31 +217,30 @@ public:
 
     // Geometric dimension
     assert(_mesh);
-    assert(_element);
     const std::size_t gdim = _mesh->geometry().dim();
     const int tdim = _mesh->topology()->dim();
 
     // Get dofmap local size
-    assert(_dofmap);
-    std::shared_ptr<const common::IndexMap> index_map = _dofmap->index_map;
+    assert(_dofmaps[0]);
+    std::shared_ptr<const common::IndexMap> index_map = _dofmaps[0]->index_map;
     assert(index_map);
-    const int index_map_bs = _dofmap->index_map_bs();
-    const int dofmap_bs = _dofmap->bs();
+    const int index_map_bs = _dofmaps[0]->index_map_bs();
+    const int dofmap_bs = _dofmaps[0]->bs();
 
-    const int element_block_size = _element->block_size();
+    const int element_block_size = _elements[0]->block_size();
     const std::size_t scalar_dofs
-        = _element->space_dimension() / element_block_size;
+        = _elements[0]->space_dimension() / element_block_size;
     const std::int32_t num_dofs
         = index_map_bs * (index_map->size_local() + index_map->num_ghosts())
           / dofmap_bs;
 
     // Get the dof coordinates on the reference element
-    if (!_element->interpolation_ident())
+    if (!_elements[0]->interpolation_ident())
     {
       throw std::runtime_error("Cannot evaluate dof coordinates - this element "
                                "does not have pointwise evaluation.");
     }
-    const auto [X, Xshape] = _element->interpolation_points();
+    const auto [X, Xshape] = _elements[0]->interpolation_points();
 
     // Get coordinate map
     const CoordinateElement<geometry_type>& cmap = _mesh->geometry().cmap();
@@ -262,7 +274,7 @@ public:
     const int num_cells = map->size_local() + map->num_ghosts();
 
     std::span<const std::uint32_t> cell_info;
-    if (_element->needs_dof_transformations())
+    if (_elements[0]->needs_dof_transformations())
     {
       _mesh->topology_mutable()->create_entity_permutations();
       cell_info = std::span(_mesh->topology()->get_cell_permutation_info());
@@ -281,7 +293,7 @@ public:
     // TODO: Check transform
     // Basis function reference-to-conforming transformation function
     auto apply_dof_transformation
-        = _element->template dof_transformation_fn<geometry_type>(
+        = _elements[0]->template dof_transformation_fn<geometry_type>(
             doftransform::standard);
 
     for (int c = 0; c < num_cells; ++c)
@@ -299,7 +311,7 @@ public:
           x_b, std::span(cell_info.data(), cell_info.size()), c, x.extent(1));
 
       // Get cell dofmap
-      auto dofs = _dofmap->cell_dofs(c);
+      auto dofs = _dofmaps[0]->cell_dofs(c);
 
       // Copy dof coordinates into vector
       if (!transpose)
@@ -328,11 +340,20 @@ public:
   /// The finite element
   std::shared_ptr<const FiniteElement<geometry_type>> element() const
   {
-    return _element;
+    if (_elements.size() > 1)
+      throw std::runtime_error("Multiple elements");
+
+    return _elements[0];
   }
 
   /// The dofmap
-  std::shared_ptr<const DofMap> dofmap() const { return _dofmap; }
+  std::shared_ptr<const DofMap> dofmap() const
+  {
+    if (_dofmaps.size() > 1)
+      throw std::runtime_error("Multiple dofmaps");
+
+    return _dofmaps[0];
+  }
 
   /// The shape of the value space
   std::span<const std::size_t> value_shape() const noexcept
@@ -356,10 +377,10 @@ private:
   std::shared_ptr<const mesh::Mesh<geometry_type>> _mesh;
 
   // The finite element
-  std::shared_ptr<const FiniteElement<geometry_type>> _element;
+  std::vector<std::shared_ptr<const FiniteElement<geometry_type>>> _elements;
 
   // The dofmap
-  std::shared_ptr<const DofMap> _dofmap;
+  std::vector<std::shared_ptr<const DofMap>> _dofmaps;
 
   // The component w.r.t. to root space
   std::vector<int> _component;
