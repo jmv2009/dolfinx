@@ -110,12 +110,25 @@
 #
 # We first import the modules and functions that the program uses:
 
+import importlib.util
+
+if importlib.util.find_spec("petsc4py") is not None:
+    import dolfinx
+
+    if not dolfinx.has_petsc:
+        print("This demo requires DOLFINx to be compiled with PETSc enabled.")
+        exit(0)
+    from petsc4py.PETSc import ScalarType  # type: ignore
+else:
+    print("This demo requires petsc4py.")
+    exit(0)
+
 from mpi4py import MPI
-from petsc4py.PETSc import ScalarType  # type: ignore
 
 # +
 import numpy as np
 
+import dolfinx
 import ufl
 from dolfinx import fem, io, mesh, plot
 from dolfinx.fem.petsc import LinearProblem
@@ -130,10 +143,13 @@ from ufl import CellDiameter, FacetNormal, avg, div, dS, dx, grad, inner, jump, 
 # finite element {py:class}`FunctionSpace <dolfinx.fem.FunctionSpace>`
 # $V$ on the mesh.
 
-msh = mesh.create_rectangle(comm=MPI.COMM_WORLD,
-                            points=((0.0, 0.0), (1.0, 1.0)), n=(32, 32),
-                            cell_type=CellType.triangle,
-                            ghost_mode=GhostMode.shared_facet)
+msh = mesh.create_rectangle(
+    comm=MPI.COMM_WORLD,
+    points=((0.0, 0.0), (1.0, 1.0)),
+    n=(32, 32),
+    cell_type=CellType.triangle,
+    ghost_mode=GhostMode.shared_facet,
+)
 V = fem.functionspace(msh, ("Lagrange", 2))
 
 # The second argument to {py:func}`functionspace
@@ -149,12 +165,14 @@ V = fem.functionspace(msh, ("Lagrange", 2))
 # function that returns `True` for points `x` on the boundary and
 # `False` otherwise.
 
-facets = mesh.locate_entities_boundary(msh, dim=1,
-                                       marker=lambda x: np.logical_or.reduce((
-                                           np.isclose(x[0], 0.0),
-                                           np.isclose(x[0], 1.0),
-                                           np.isclose(x[1], 0.0),
-                                           np.isclose(x[1], 1.0))))
+facets = mesh.locate_entities_boundary(
+    msh,
+    dim=1,
+    marker=lambda x: np.isclose(x[0], 0.0)
+    | np.isclose(x[0], 1.0)
+    | np.isclose(x[1], 0.0)
+    | np.isclose(x[1], 1.0),
+)
 
 # We now find the degrees-of-freedom that are associated with the
 # boundary facets using {py:func}`locate_dofs_topological
@@ -183,7 +201,7 @@ bc = fem.dirichletbc(value=ScalarType(0), dofs=dofs, V=V)
 alpha = ScalarType(8.0)
 h = CellDiameter(msh)
 n = FacetNormal(msh)
-h_avg = (h('+') + h('-')) / 2.0
+h_avg = (h("+") + h("-")) / 2.0
 
 # After that, we can define the variational problem consisting of the bilinear
 # form $a$ and the linear form $L$. The source term is prescribed as
@@ -201,10 +219,12 @@ v = ufl.TestFunction(V)
 x = ufl.SpatialCoordinate(msh)
 f = 4.0 * pi**4 * sin(pi * x[0]) * sin(pi * x[1])
 
-a = inner(div(grad(u)), div(grad(v))) * dx \
-    - inner(avg(div(grad(u))), jump(grad(v), n)) * dS \
-    - inner(jump(grad(u), n), avg(div(grad(v)))) * dS \
+a = (
+    inner(div(grad(u)), div(grad(v))) * dx
+    - inner(avg(div(grad(u))), jump(grad(v), n)) * dS
+    - inner(jump(grad(u), n), avg(div(grad(v)))) * dS
     + alpha / h_avg * inner(jump(grad(u), n), jump(grad(v), n)) * dS
+)
 L = inner(f, v) * dx
 # -
 
@@ -232,6 +252,7 @@ with io.XDMFFile(msh.comm, "out_biharmonic/biharmonic.xdmf", "w") as file:
 # +
 try:
     import pyvista
+
     cells, types, x = plot.vtk_mesh(V)
     grid = pyvista.UnstructuredGrid(cells, types, x)
     grid.point_data["u"] = uh.x.array.real

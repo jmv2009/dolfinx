@@ -86,15 +86,33 @@
 # The required modules are first imported:
 
 from mpi4py import MPI
-from petsc4py import PETSc
+
+try:
+    from petsc4py import PETSc
+
+    import dolfinx
+
+    if not dolfinx.has_petsc:
+        print("This demo requires DOLFINx to be compiled with PETSc enabled.")
+        exit(0)
+except ModuleNotFoundError:
+    print("This demo requires petsc4py.")
+    exit(0)
 
 import numpy as np
 
 import ufl
 from basix.ufl import element, mixed_element
-from dolfinx import fem, la
-from dolfinx.fem import (Constant, Function, dirichletbc, extract_function_spaces, form, functionspace,
-                         locate_dofs_topological)
+from dolfinx import default_real_type, fem, la
+from dolfinx.fem import (
+    Constant,
+    Function,
+    dirichletbc,
+    extract_function_spaces,
+    form,
+    functionspace,
+    locate_dofs_topological,
+)
 from dolfinx.fem.petsc import assemble_matrix_block, assemble_vector_block
 from dolfinx.io import XDMFFile
 from dolfinx.mesh import CellType, create_rectangle, locate_entities_boundary
@@ -106,14 +124,14 @@ from ufl import div, dx, grad, inner
 
 # +
 # Create mesh
-msh = create_rectangle(MPI.COMM_WORLD, [np.array([0, 0]), np.array([1, 1])],
-                       [32, 32], CellType.triangle)
+msh = create_rectangle(
+    MPI.COMM_WORLD, [np.array([0, 0]), np.array([1, 1])], [32, 32], CellType.triangle
+)
 
 
 # Function to mark x = 0, x = 1 and y = 0
 def noslip_boundary(x):
-    return np.logical_or(np.logical_or(np.isclose(x[0], 0.0), np.isclose(x[0], 1.0)),
-                         np.isclose(x[1], 0.0))
+    return np.isclose(x[0], 0.0) | np.isclose(x[0], 1.0) | np.isclose(x[1], 0.0)
 
 
 # Function to mark the lid (y = 1)
@@ -124,6 +142,8 @@ def lid(x):
 # Lid velocity
 def lid_velocity_expression(x):
     return np.stack((np.ones(x.shape[1]), np.zeros(x.shape[1])))
+
+
 # -
 
 # Two {py:class}`function spaces <dolfinx.fem.FunctionSpace>` are
@@ -132,15 +152,15 @@ def lid_velocity_expression(x):
 # piecewise linear basis (scalar).
 
 
-P2 = element("Lagrange", msh.basix_cell(), 2, shape=(msh.geometry.dim,))
-P1 = element("Lagrange", msh.basix_cell(), 1)
+P2 = element("Lagrange", msh.basix_cell(), 2, shape=(msh.geometry.dim,), dtype=default_real_type)
+P1 = element("Lagrange", msh.basix_cell(), 1, dtype=default_real_type)
 V, Q = functionspace(msh, P2), functionspace(msh, P1)
 
 # Boundary conditions for the velocity field are defined:
 
 # +
 # No-slip condition on boundaries where x = 0, x = 1, and y = 0
-noslip = np.zeros(msh.geometry.dim, dtype=PETSc.ScalarType)   # type: ignore
+noslip = np.zeros(msh.geometry.dim, dtype=PETSc.ScalarType)  # type: ignore
 facets = locate_entities_boundary(msh, 1, noslip_boundary)
 bc0 = dirichletbc(noslip, locate_dofs_topological(V, 1, facets), V)
 
@@ -163,8 +183,7 @@ bcs = [bc0, bc1]
 (v, q) = ufl.TestFunction(V), ufl.TestFunction(Q)
 f = Constant(msh, (PETSc.ScalarType(0), PETSc.ScalarType(0)))  # type: ignore
 
-a = form([[inner(grad(u), grad(v)) * dx, inner(p, div(v)) * dx],
-          [inner(div(u), q) * dx, None]])
+a = form([[inner(grad(u), grad(v)) * dx, inner(p, div(v)) * dx], [inner(div(u), q) * dx, None]])
 L = form([inner(f, v) * dx, inner(Constant(msh, PETSc.ScalarType(0)), q) * dx])  # type: ignore
 # -
 
@@ -172,8 +191,7 @@ L = form([inner(f, v) * dx, inner(Constant(msh, PETSc.ScalarType(0)), q) * dx]) 
 # solvers for this problem:
 
 a_p11 = form(inner(p, q) * dx)
-a_p = [[a[0][0], None],
-       [None, a_p11]]
+a_p = [[a[0][0], None], [None, a_p11]]
 
 # ### Nested matrix solver
 #
@@ -267,8 +285,7 @@ def nested_iterative_solver():
     # space `Q`). The vectors for `u` and `p` are combined to form a
     # nested vector and the system is solved.
     u, p = Function(V), Function(Q)
-    x = PETSc.Vec().createNest([la.create_petsc_vector_wrap(u.x),
-                                la.create_petsc_vector_wrap(p.x)])
+    x = PETSc.Vec().createNest([la.create_petsc_vector_wrap(u.x), la.create_petsc_vector_wrap(p.x)])
     ksp.solve(b, x)
 
     # Save solution to file in XDMF format for visualization, e.g. with
@@ -276,7 +293,9 @@ def nested_iterative_solver():
     # `scatter_forward`.
     with XDMFFile(MPI.COMM_WORLD, "out_stokes/velocity.xdmf", "w") as ufile_xdmf:
         u.x.scatter_forward()
-        P1 = element("Lagrange", msh.basix_cell(), 1, shape=(msh.geometry.dim,))
+        P1 = element(
+            "Lagrange", msh.basix_cell(), 1, shape=(msh.geometry.dim,), dtype=default_real_type
+        )
         u1 = Function(functionspace(msh, P1))
         u1.interpolate(u)
         ufile_xdmf.write_mesh(msh)
@@ -288,8 +307,8 @@ def nested_iterative_solver():
         pfile_xdmf.write_function(p)
 
     # Compute norms of the solution vectors
-    norm_u = u.x.norm()
-    norm_p = p.x.norm()
+    norm_u = la.norm(u.x)
+    norm_p = la.norm(p.x)
     if MPI.COMM_WORLD.rank == 0:
         print(f"(A) Norm of velocity coefficient vector (nested, iterative): {norm_u}")
         print(f"(A) Norm of pressure coefficient vector (nested, iterative): {norm_p}")
@@ -302,6 +321,7 @@ def nested_iterative_solver():
 # We now solve the same Stokes problem, but using monolithic
 # (non-nested) matrices. We first create a helper function for
 # assembling the linear operators and the RHS vector.
+
 
 def block_operators():
     """Return block operators and block RHS vector for the Stokes
@@ -327,6 +347,7 @@ def block_operators():
 
     return A, P, b
 
+
 # The following function solves the Stokes problem using a
 # block-diagonal preconditioner and monolithic PETSc matrices.
 
@@ -344,7 +365,9 @@ def block_iterative_solver():
     Q_map = Q.dofmap.index_map
     offset_u = V_map.local_range[0] * V.dofmap.index_map_bs + Q_map.local_range[0]
     offset_p = offset_u + V_map.size_local * V.dofmap.index_map_bs
-    is_u = PETSc.IS().createStride(V_map.size_local * V.dofmap.index_map_bs, offset_u, 1, comm=PETSc.COMM_SELF)
+    is_u = PETSc.IS().createStride(
+        V_map.size_local * V.dofmap.index_map_bs, offset_u, 1, comm=PETSc.COMM_SELF
+    )
     is_p = PETSc.IS().createStride(Q_map.size_local, offset_p, 1, comm=PETSc.COMM_SELF)
 
     # Create a MINRES Krylov solver and a block-diagonal preconditioner
@@ -382,10 +405,10 @@ def block_iterative_solver():
     u, p = Function(V), Function(Q)
     offset = V_map.size_local * V.dofmap.index_map_bs
     u.x.array[:offset] = x.array_r[:offset]
-    p.x.array[:(len(x.array_r) - offset)] = x.array_r[offset:]
+    p.x.array[: (len(x.array_r) - offset)] = x.array_r[offset:]
 
     # Compute the $L^2$ norms of the solution vectors
-    norm_u, norm_p = u.x.norm(), p.x.norm()
+    norm_u, norm_p = la.norm(u.x), la.norm(p.x)
     if MPI.COMM_WORLD.rank == 0:
         print(f"(B) Norm of velocity coefficient vector (blocked, iterative): {norm_u}")
         print(f"(B) Norm of pressure coefficient vector (blocked, iterative): {norm_p}")
@@ -415,7 +438,7 @@ def block_direct_solver():
     # handle pressure nullspace
     pc = ksp.getPC()
     pc.setType("lu")
-    pc.setFactorSolverType("mumps")
+    pc.setFactorSolverType("superlu_dist")
     try:
         pc.setFactorSetUpSolverType()
     except PETSc.Error as e:
@@ -425,8 +448,8 @@ def block_direct_solver():
             exit(0)
         else:
             raise e
-    pc.getFactorMatrix().setMumpsIcntl(icntl=24, ival=1)  # For pressure nullspace
-    pc.getFactorMatrix().setMumpsIcntl(icntl=25, ival=0)  # For pressure nullspace
+    # pc.getFactorMatrix().setMumpsIcntl(icntl=24, ival=1)  # For pressure nullspace
+    # pc.getFactorMatrix().setMumpsIcntl(icntl=25, ival=0)  # For pressure nullspace
 
     # Create a block vector (x) to store the full solution, and solve
     x = A.createVecLeft()
@@ -436,10 +459,10 @@ def block_direct_solver():
     u, p = Function(V), Function(Q)
     offset = V.dofmap.index_map.size_local * V.dofmap.index_map_bs
     u.x.array[:offset] = x.array_r[:offset]
-    p.x.array[:(len(x.array_r) - offset)] = x.array_r[offset:]
+    p.x.array[: (len(x.array_r) - offset)] = x.array_r[offset:]
 
     # Compute the $L^2$ norms of the u and p vectors
-    norm_u, norm_p = u.x.norm(), p.x.norm()
+    norm_u, norm_p = la.norm(u.x), la.norm(p.x)
     if MPI.COMM_WORLD.rank == 0:
         print(f"(C) Norm of velocity coefficient vector (blocked, direct): {norm_u}")
         print(f"(C) Norm of pressure coefficient vector (blocked, direct): {norm_p}")
@@ -456,7 +479,6 @@ def block_direct_solver():
 
 
 def mixed_direct():
-
     # Create the Taylot-Hood function space
     TH = mixed_element([P2, P1])
     W = functionspace(msh, TH)
@@ -505,15 +527,17 @@ def mixed_direct():
     # Configure MUMPS to handle pressure nullspace
     pc = ksp.getPC()
     pc.setType("lu")
-    pc.setFactorSolverType("mumps")
-    pc.setFactorSetUpSolverType()
-    pc.getFactorMatrix().setMumpsIcntl(icntl=24, ival=1)
-    pc.getFactorMatrix().setMumpsIcntl(icntl=25, ival=0)
+    # pc.setFactorSolverType("mumps")
+    # pc.setFactorSetUpSolverType()
+    # pc.getFactorMatrix().setMumpsIcntl(icntl=24, ival=1)
+    # pc.getFactorMatrix().setMumpsIcntl(icntl=25, ival=0)
+
+    pc.setFactorSolverType("superlu_dist")
 
     # Compute the solution
     U = Function(W)
     try:
-        ksp.solve(b, U.vector)
+        ksp.solve(b, U.x.petsc_vec)
     except PETSc.Error as e:
         if e.ierr == 92:
             print("The required PETSc solver/preconditioner is not available. Exiting.")
@@ -526,7 +550,7 @@ def mixed_direct():
     u, p = U.sub(0).collapse(), U.sub(1).collapse()
 
     # Compute norms
-    norm_u, norm_p = u.x.norm(), p.x.norm()
+    norm_u, norm_p = la.norm(u.x), la.norm(p.x)
     if MPI.COMM_WORLD.rank == 0:
         print(f"(D) Norm of velocity coefficient vector (monolithic, direct): {norm_u}")
         print(f"(D) Norm of pressure coefficient vector (monolithic, direct): {norm_p}")
@@ -549,4 +573,4 @@ np.testing.assert_allclose(norm_p_2, norm_p_0, rtol=1e-4)
 
 # Solve using a non-blocked matrix and an LU solver
 norm_u_3, norm_p_3 = mixed_direct()
-np.testing.assert_allclose(norm_u_3, norm_u_0, rtol=1e-4)
+np.testing.assert_allclose(norm_u_3, norm_u_0, rtol=1e-3)

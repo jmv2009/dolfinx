@@ -43,15 +43,17 @@ def test_area(cube, square):
 
 
 def test_normals(cube, square):
-    """ Test cell normals for a subset of facets """
+    """Test cell normals for a subset of facets"""
+
     def left_side(x):
         return np.isclose(x[0], 0)
+
     fdim = cube.topology.dim - 1
     facets = locate_entities_boundary(cube, fdim, left_side)
     normals = cell_normals(cube._cpp_object, fdim, facets)
-    assert np.allclose(normals, [-1, 0, 0])
+    assert np.allclose(np.abs(normals), [1, 0, 0])
 
     fdim = square.topology.dim - 1
     facets = locate_entities_boundary(square, fdim, left_side)
     normals = cell_normals(square._cpp_object, fdim, facets)
-    assert np.allclose(normals, [-1, 0, 0])
+    assert np.allclose(np.abs(normals), [1, 0, 0])

@@ -15,34 +15,60 @@
 # First, we import the required modules
 
 # +
+import importlib.util
+
+if importlib.util.find_spec("petsc4py") is not None:
+    import dolfinx
+
+    if not dolfinx.has_petsc:
+        print("This demo requires DOLFINx to be compiled with PETSc enabled.")
+        exit(0)
+else:
+    print("This demo requires petsc4py.")
+    exit(0)
+
 import sys
 from functools import partial
 from typing import Union
 
 from mpi4py import MPI
 
-from efficiencies_pml_demo import calculate_analytical_efficiencies
-from mesh_wire_pml import generate_mesh_wire
+import numpy as np
+from scipy.special import h2vp, hankel2, jv, jvp
 
 import ufl
 from basix.ufl import element
-from dolfinx import default_scalar_type, fem, mesh, plot
+from dolfinx import default_real_type, default_scalar_type, fem, mesh, plot
 from dolfinx.fem.petsc import LinearProblem
-from dolfinx.io import VTXWriter, gmshio
+from dolfinx.io import gmshio
+
+try:
+    from dolfinx.io import VTXWriter
+except ImportError:
+    print("This demo requires DOLFINx to be configured with adios2.")
+    exit(0)
 
 try:
     import gmsh
 except ModuleNotFoundError:
     print("This demo requires gmsh to be installed")
-    sys.exit(0)
-import numpy as np
+    exit(0)
 
 try:
     import pyvista
+
     have_pyvista = True
 except ModuleNotFoundError:
     print("pyvista and pyvistaqt are required to visualise the solution")
     have_pyvista = False
+
+from petsc4py import PETSc
+
+if PETSc.IntType == np.int64 and MPI.COMM_WORLD.size > 1:
+    print("This solver fails with PETSc and 64-bit integers becaude of memory errors in MUMPS.")
+    # Note: when PETSc.IntType == np.int32, superlu_dist is used rather
+    # than MUMPS and does not trigger memory failures.
+    exit(0)
 # -
 
 # Since we want to solve time-harmonic Maxwell's equation, we require
@@ -51,6 +77,249 @@ except ModuleNotFoundError:
 if not np.issubdtype(default_scalar_type, np.complexfloating):
     print("Demo should only be executed with DOLFINx complex mode")
     exit(0)
+
+# This file defines the `generate_mesh_wire` function, which is used to
+# generate the mesh used for the PML demo. The mesh is made up by a
+# central circle (the wire), and an external layer (the PML) divided in
+# 4 rectangles and 4 squares at the corners. The `generate_mesh_wire`
+# function takes as input:
+
+# - `radius_wire`: the radius of the wire
+# - `radius_scatt`: the radius of the circle where scattering efficiency
+#   is calculated
+# - `l_dom`: length of real domain
+# - `l_pml`: length of PML layer
+# - `in_wire_size`: the mesh size at a distance `0.8 * radius_wire` from
+#   the origin
+# - `on_wire_size`: the mesh size on the wire boundary
+# - `scatt_size`: the mesh size on the circle where scattering
+#   efficiency is calculated
+# - `pml_size`: the mesh size on the outer boundary of the PML
+# - `au_tag`: the tag of the physical group representing the wire
+# - `bkg_tag`: the tag of the physical group representing the background
+# - `scatt_tag`: the tag of the physical group representing the boundary
+#   where scattering efficiency is calculated
+# - `pml_tag`: the tag of the physical group representing the PML
+#   (together with pml_tag+1 and pml_tag+2)
+#
+#
+
+from functools import reduce
+
+
+def generate_mesh_wire(
+    radius_wire: float,
+    radius_scatt: float,
+    l_dom: float,
+    l_pml: float,
+    in_wire_size: float,
+    on_wire_size: float,
+    scatt_size: float,
+    pml_size: float,
+    au_tag: int,
+    bkg_tag: int,
+    scatt_tag: int,
+    pml_tag: int,
+):
+    gmsh.model.add("nanowire")
+    dim = 2
+    # A dummy circle for setting a finer mesh
+    c1 = gmsh.model.occ.addCircle(0.0, 0.0, 0.0, radius_wire * 0.8, angle1=0.0, angle2=2 * np.pi)
+    gmsh.model.occ.addCurveLoop([c1], tag=c1)
+    gmsh.model.occ.addPlaneSurface([c1], tag=c1)
+
+    c2 = gmsh.model.occ.addCircle(0.0, 0.0, 0.0, radius_wire, angle1=0, angle2=2 * np.pi)
+    gmsh.model.occ.addCurveLoop([c2], tag=c2)
+    gmsh.model.occ.addPlaneSurface([c2], tag=c2)
+    wire, _ = gmsh.model.occ.fragment([(dim, c2)], [(dim, c1)])
+
+    # A dummy circle for the calculation of the scattering efficiency
+    c3 = gmsh.model.occ.addCircle(0.0, 0.0, 0.0, radius_scatt, angle1=0, angle2=2 * np.pi)
+    gmsh.model.occ.addCurveLoop([c3], tag=c3)
+    gmsh.model.occ.addPlaneSurface([c3], tag=c3)
+
+    r0 = gmsh.model.occ.addRectangle(-l_dom / 2, -l_dom / 2, 0, l_dom, l_dom)
+    inclusive_rectangle, _ = gmsh.model.occ.fragment([(dim, r0)], [(dim, c3)])
+
+    delta_pml = (l_pml - l_dom) / 2
+
+    separate_rectangle, _ = gmsh.model.occ.cut(inclusive_rectangle, wire, removeTool=False)
+    _, physical_domain = gmsh.model.occ.fragment(separate_rectangle, wire)
+
+    bkg_tags = [tag[0] for tag in physical_domain[: len(separate_rectangle)]]
+
+    wire_tags = [
+        tag[0]
+        for tag in physical_domain[len(separate_rectangle) : len(inclusive_rectangle) + len(wire)]
+    ]
+
+    # Corner PMLS
+    pml1 = gmsh.model.occ.addRectangle(-l_pml / 2, l_dom / 2, 0, delta_pml, delta_pml)
+    pml2 = gmsh.model.occ.addRectangle(-l_pml / 2, -l_pml / 2, 0, delta_pml, delta_pml)
+    pml3 = gmsh.model.occ.addRectangle(l_dom / 2, l_dom / 2, 0, delta_pml, delta_pml)
+    pml4 = gmsh.model.occ.addRectangle(l_dom / 2, -l_pml / 2, 0, delta_pml, delta_pml)
+    corner_pmls = [(dim, pml1), (dim, pml2), (dim, pml3), (dim, pml4)]
+
+    # X pmls
+    pml5 = gmsh.model.occ.addRectangle(-l_pml / 2, -l_dom / 2, 0, delta_pml, l_dom)
+    pml6 = gmsh.model.occ.addRectangle(l_dom / 2, -l_dom / 2, 0, delta_pml, l_dom)
+    x_pmls = [(dim, pml5), (dim, pml6)]
+
+    # Y pmls
+    pml7 = gmsh.model.occ.addRectangle(-l_dom / 2, l_dom / 2, 0, l_dom, delta_pml)
+    pml8 = gmsh.model.occ.addRectangle(-l_dom / 2, -l_pml / 2, 0, l_dom, delta_pml)
+    y_pmls = [(dim, pml7), (dim, pml8)]
+    _, surface_map = gmsh.model.occ.fragment(bkg_tags + wire_tags, corner_pmls + x_pmls + y_pmls)
+
+    gmsh.model.occ.synchronize()
+
+    bkg_group = [tag[0][1] for tag in surface_map[: len(bkg_tags)]]
+    gmsh.model.addPhysicalGroup(dim, bkg_group, tag=bkg_tag)
+    wire_group = [tag[0][1] for tag in surface_map[len(bkg_tags) : len(bkg_tags + wire_tags)]]
+
+    gmsh.model.addPhysicalGroup(dim, wire_group, tag=au_tag)
+
+    corner_group = [
+        tag[0][1]
+        for tag in surface_map[len(bkg_tags + wire_tags) : len(bkg_tags + wire_tags + corner_pmls)]
+    ]
+    gmsh.model.addPhysicalGroup(dim, corner_group, tag=pml_tag)
+
+    x_group = [
+        tag[0][1]
+        for tag in surface_map[
+            len(bkg_tags + wire_tags + corner_pmls) : len(
+                bkg_tags + wire_tags + corner_pmls + x_pmls
+            )
+        ]
+    ]
+
+    gmsh.model.addPhysicalGroup(dim, x_group, tag=pml_tag + 1)
+
+    y_group = [
+        tag[0][1]
+        for tag in surface_map[
+            len(bkg_tags + wire_tags + corner_pmls + x_pmls) : len(
+                bkg_tags + wire_tags + corner_pmls + x_pmls + y_pmls
+            )
+        ]
+    ]
+
+    gmsh.model.addPhysicalGroup(dim, y_group, tag=pml_tag + 2)
+
+    # Marker interior surface in bkg group
+    boundaries: list[np.tynp.ping.NDArray[np.int32]] = []
+    for tag in bkg_group:
+        boundary_pairs = gmsh.model.get_boundary([(dim, tag)], oriented=False)
+        boundaries.append(np.asarray([pair[1] for pair in boundary_pairs], dtype=np.int32))
+
+    interior_boundary = reduce(np.intersect1d, boundaries)
+    gmsh.model.addPhysicalGroup(dim - 1, interior_boundary, tag=scatt_tag)
+    gmsh.model.mesh.setSize([(0, 1)], size=in_wire_size)
+    gmsh.model.mesh.setSize([(0, 2)], size=on_wire_size)
+    gmsh.model.mesh.setSize([(0, 3)], size=scatt_size)
+    gmsh.model.mesh.setSize([(0, x) for x in range(4, 40)], size=pml_size)
+
+    gmsh.model.mesh.generate(2)
+    return gmsh.model
+
+
+# This file contains a function for the calculation of the
+# absorption, scattering and extinction efficiencies of a wire
+# being hit normally by a TM-polarized electromagnetic wave.
+#
+# The formula are taken from:
+# Milton Kerker, "The Scattering of Light and Other Electromagnetic Radiation",
+# Chapter 6, Elsevier, 1969.
+#
+# ## Implementation
+# First of all, let's define the parameters of the problem:
+#
+# - $n = \sqrt{\varepsilon}$: refractive index of the wire,
+# - $n_b$: refractive index of the background medium,
+# - $m = n/n_b$: relative refractive index of the wire,
+# - $\lambda_0$: wavelength of the electromagnetic wave,
+# - $r_w$: radius of the cross-section of the wire,
+# - $\alpha = 2\pi r_w n_b/\lambda_0$.
+#
+# Now, let's define the $a_\nu$ coefficients as:
+#
+# $$
+# \begin{equation}
+# a_\nu=\frac{J_\nu(\alpha) J_\nu^{\prime}(m \alpha)-m J_\nu(m \alpha)
+# J_\nu^{\prime}(\alpha)}{H_\nu^{(2)}(\alpha) J_\nu^{\prime}(m \alpha)
+# -m J_\nu(m \alpha) H_\nu^{(2){\prime}}(\alpha)}
+# \end{equation}
+# $$
+#
+# where:
+# - $J_\nu(x)$: $\nu$-th order Bessel function of the first kind,
+# - $J_\nu^{\prime}(x)$: first derivative with respect to $x$ of
+# the $\nu$-th order Bessel function of the first kind,
+# - $H_\nu^{(2)}(x)$: $\nu$-th order Hankel function of the second kind,
+# - $H_\nu^{(2){\prime}}(x)$: first derivative with respect to $x$ of
+# the $\nu$-th order Hankel function of the second kind.
+#
+# We can now calculate the scattering, extinction and absorption
+# efficiencies as:
+#
+# $$
+# & q_{\mathrm{sca}}=(2 / \alpha)\left[\left|a_0\right|^{2}
+# +2 \sum_{\nu=1}^{\infty}\left|a_\nu\right|^{2}\right] \\
+# & q_{\mathrm{ext}}=(2 / \alpha) \operatorname{Re}\left[ a_0
+# +2 \sum_{\nu=1}^{\infty} a_\nu\right] \\
+# & q_{\mathrm{abs}} = q_{\mathrm{ext}} - q_{\mathrm{sca}}
+# $$
+
+
+# The functions that we import from `scipy.special` correspond to:
+#
+# - `jv(nu, x)` ⟷ $J_\nu(x)$,
+# - `jvp(nu, x, 1)` ⟷ $J_\nu^{\prime}(x)$,
+# - `hankel2(nu, x)` ⟷ $H_\nu^{(2)}(x)$,
+# - `h2vp(nu, x, 1)` ⟷ $H_\nu^{(2){\prime}}(x)$.
+#
+# Next, we define a function for calculating the analytical efficiencies
+# in Python. The inputs of the function are:
+#
+# - `eps` ⟷ $\varepsilon$,
+# - `n_bkg` ⟷ $n_b$,
+# - `wl0` ⟷ $\lambda_0$,
+# - `radius_wire` ⟷ $r_w$.
+#
+# We also define a nested function for the calculation of $a_l$. For the
+# final calculation of the efficiencies, the summation over the different
+# orders of the Bessel functions is truncated at $\nu=50$.
+
+# +
+
+
+def compute_a(nu: int, m: complex, alpha: float) -> float:
+    J_nu_alpha = jv(nu, alpha)
+    J_nu_malpha = jv(nu, m * alpha)
+    J_nu_alpha_p = jvp(nu, alpha, 1)
+    J_nu_malpha_p = jvp(nu, m * alpha, 1)
+
+    H_nu_alpha = hankel2(nu, alpha)
+    H_nu_alpha_p = h2vp(nu, alpha, 1)
+
+    a_nu_num = J_nu_alpha * J_nu_malpha_p - m * J_nu_malpha * J_nu_alpha_p
+    a_nu_den = H_nu_alpha * J_nu_malpha_p - m * J_nu_malpha * H_nu_alpha_p
+    return a_nu_num / a_nu_den
+
+
+def calculate_analytical_efficiencies(
+    eps: complex, n_bkg: float, wl0: float, radius_wire: float, num_n: int = 50
+) -> tuple[float, float, float]:
+    m = np.sqrt(np.conj(eps)) / n_bkg
+    alpha = 2 * np.pi * radius_wire / wl0 * n_bkg
+    c = 2 / alpha
+    q_ext = c * np.real(compute_a(0, m, alpha))
+    q_sca = c * np.abs(compute_a(0, m, alpha)) ** 2
+    for nu in range(1, num_n + 1):
+        q_ext += c * 2 * np.real(compute_a(nu, m, alpha))
+        q_sca += c * 2 * np.abs(compute_a(nu, m, alpha)) ** 2
+    return q_ext - q_sca, q_sca, q_ext
 
 
 # Now, let's consider an infinite metallic wire immersed in a background
@@ -92,14 +361,15 @@ if not np.issubdtype(default_scalar_type, np.complexfloating):
 # The function `background_field` below implements this analytical
 # formula:
 
-# +
-def background_field(theta: float, n_b: float, k0: complex,
-                     x: np.typing.NDArray[np.float64]):
 
+# +
+def background_field(theta: float, n_b: float, k0: complex, x: np.typing.NDArray[np.float64]):
     kx = n_b * k0 * np.cos(theta)
     ky = n_b * k0 * np.sin(theta)
     phi = kx * x[0] + ky * x[1]
     return (-np.sin(theta) * np.exp(1j * phi), np.cos(theta) * np.exp(1j * phi))
+
+
 # -
 
 # For convenience, we define the $\nabla\times$ operator for a 2D vector
@@ -127,7 +397,7 @@ def curl_2d(a: fem.Function):
 
 
 def pml_coordinates(x: ufl.indexed.Indexed, alpha: float, k0: complex, l_dom: float, l_pml: float):
-    return (x + 1j * alpha / k0 * x * (ufl.algebra.Abs(x) - l_dom / 2) / (l_pml / 2 - l_dom / 2)**2)
+    return x + 1j * alpha / k0 * x * (ufl.algebra.Abs(x) - l_dom / 2) / (l_pml / 2 - l_dom / 2) ** 2
 
 
 # We use the following domain specific parameters.
@@ -172,9 +442,20 @@ pml_tag = 4
 model = None
 gmsh.initialize(sys.argv)
 if MPI.COMM_WORLD.rank == 0:
-    model = generate_mesh_wire(radius_wire, radius_scatt, l_dom, l_pml,
-                               in_wire_size, on_wire_size, scatt_size, pml_size,
-                               au_tag, bkg_tag, scatt_tag, pml_tag)
+    model = generate_mesh_wire(
+        radius_wire,
+        radius_scatt,
+        l_dom,
+        l_pml,
+        in_wire_size,
+        on_wire_size,
+        scatt_size,
+        pml_size,
+        au_tag,
+        bkg_tag,
+        scatt_tag,
+        pml_tag,
+    )
 model = MPI.COMM_WORLD.bcast(model, root=0)
 msh, cell_tags, facet_tags = gmshio.model_to_mesh(model, MPI.COMM_WORLD, 0, gdim=2)
 
@@ -185,11 +466,12 @@ MPI.COMM_WORLD.barrier()
 # We visualize the mesh and subdomains with
 # [PyVista](https://docs.pyvista.org/)
 
+tdim = msh.topology.dim
 if have_pyvista:
     topology, cell_types, geometry = plot.vtk_mesh(msh, 2)
     grid = pyvista.UnstructuredGrid(topology, cell_types, geometry)
     plotter = pyvista.Plotter()
-    num_local_cells = msh.topology.index_map(msh.topology.dim).size_local
+    num_local_cells = msh.topology.index_map(tdim).size_local
     grid.cell_data["Marker"] = cell_tags.values[cell_tags.indices < num_local_cells]
     grid.set_active_scalars("Marker")
     plotter.add_mesh(grid, show_edges=True)
@@ -230,7 +512,7 @@ theta = 0  # Angle of incidence of the background field
 # element to represent the electric field:
 
 degree = 3
-curl_el = element("N1curl", msh.basix_cell(), degree)
+curl_el = element("N1curl", msh.basix_cell(), degree, dtype=default_real_type)
 V = fem.functionspace(msh, curl_el)
 
 # Next, we interpolate $\mathbf{E}_b$ into the function space $V$,
@@ -289,8 +571,9 @@ x = ufl.SpatialCoordinate(msh)
 alpha = 1
 
 # PML corners
-xy_pml = ufl.as_vector((pml_coordinates(x[0], alpha, k0, l_dom, l_pml),
-                        pml_coordinates(x[1], alpha, k0, l_dom, l_pml)))
+xy_pml = ufl.as_vector(
+    (pml_coordinates(x[0], alpha, k0, l_dom, l_pml), pml_coordinates(x[1], alpha, k0, l_dom, l_pml))
+)
 
 # PML rectangles along x
 x_pml = ufl.as_vector((pml_coordinates(x[0], alpha, k0, l_dom, l_pml), x[1]))
@@ -356,16 +639,15 @@ y_pml = ufl.as_vector((x[0], pml_coordinates(x[1], alpha, k0, l_dom, l_pml)))
 # +
 
 
-def create_eps_mu(pml: ufl.tensors.ListTensor,
-                  eps_bkg: Union[float, ufl.tensors.ListTensor],
-                  mu_bkg: Union[float, ufl.tensors.ListTensor]) -> tuple[ufl.tensors.ComponentTensor,
-                                                                         ufl.tensors.ComponentTensor]:
+def create_eps_mu(
+    pml: ufl.tensors.ListTensor,
+    eps_bkg: Union[float, ufl.tensors.ListTensor],
+    mu_bkg: Union[float, ufl.tensors.ListTensor],
+) -> tuple[ufl.tensors.ComponentTensor, ufl.tensors.ComponentTensor]:
     J = ufl.grad(pml)
 
     # Transform the 2x2 Jacobian into a 3x3 matrix.
-    J = ufl.as_matrix(((J[0, 0], 0, 0),
-                       (0, J[1, 1], 0),
-                       (0, 0, 1)))
+    J = ufl.as_matrix(((J[0, 0], 0, 0), (0, J[1, 1], 0), (0, 0, 1)))
 
     A = ufl.inv(J)
     eps_pml = ufl.det(J) * A * eps_bkg * ufl.transpose(A)
@@ -403,15 +685,17 @@ eps_xy, mu_xy = create_eps_mu(xy_pml, eps_bkg, 1)
 
 # +
 # Definition of the weak form
-F = - ufl.inner(curl_2d(Es), curl_2d(v)) * dDom \
-    + eps * (k0**2) * ufl.inner(Es, v) * dDom \
-    + (k0**2) * (eps - eps_bkg) * ufl.inner(Eb, v) * dDom \
-    - ufl.inner(ufl.inv(mu_x) * curl_2d(Es), curl_2d(v)) * dPml_x \
-    - ufl.inner(ufl.inv(mu_y) * curl_2d(Es), curl_2d(v)) * dPml_y \
-    - ufl.inner(ufl.inv(mu_xy) * curl_2d(Es), curl_2d(v)) * dPml_xy \
-    + (k0**2) * ufl.inner(eps_x * Es_3d, v_3d) * dPml_x \
-    + (k0**2) * ufl.inner(eps_y * Es_3d, v_3d) * dPml_y \
+F = (
+    -ufl.inner(curl_2d(Es), curl_2d(v)) * dDom
+    + eps * (k0**2) * ufl.inner(Es, v) * dDom
+    + (k0**2) * (eps - eps_bkg) * ufl.inner(Eb, v) * dDom
+    - ufl.inner(ufl.inv(mu_x) * curl_2d(Es), curl_2d(v)) * dPml_x
+    - ufl.inner(ufl.inv(mu_y) * curl_2d(Es), curl_2d(v)) * dPml_y
+    - ufl.inner(ufl.inv(mu_xy) * curl_2d(Es), curl_2d(v)) * dPml_xy
+    + (k0**2) * ufl.inner(eps_x * Es_3d, v_3d) * dPml_x
+    + (k0**2) * ufl.inner(eps_y * Es_3d, v_3d) * dPml_y
     + (k0**2) * ufl.inner(eps_xy * Es_3d, v_3d) * dPml_xy
+)
 
 a, L = ufl.lhs(F), ufl.rhs(F)
 
@@ -442,7 +726,7 @@ if have_pyvista:
     V_cells, V_types, V_x = plot.vtk_mesh(V_dg)
     V_grid = pyvista.UnstructuredGrid(V_cells, V_types, V_x)
     Esh_values = np.zeros((V_x.shape[0], 3), dtype=np.float64)
-    Esh_values[:, :msh.topology.dim] = Esh_dg.x.array.reshape(V_x.shape[0], msh.topology.dim).real
+    Esh_values[:, :tdim] = Esh_dg.x.array.reshape(V_x.shape[0], tdim).real
     V_grid.point_data["u"] = Esh_values
 
     plotter = pyvista.Plotter()
@@ -480,7 +764,9 @@ with VTXWriter(msh.comm, "E.bp", E_dg) as vtx:
 # `calculate_analytical_efficiencies` function defined in a separate
 # file:
 
-q_abs_analyt, q_sca_analyt, q_ext_analyt = calculate_analytical_efficiencies(eps_au, n_bkg, wl0, radius_wire)
+q_abs_analyt, q_sca_analyt, q_ext_analyt = calculate_analytical_efficiencies(
+    eps_au, n_bkg, wl0, radius_wire
+)
 
 # We calculate the numerical efficiencies in the same way as done in
 # `demo_scattering_boundary_conditions.py`, with the only difference
@@ -511,11 +797,11 @@ n_3d = ufl.as_vector((n[0], n[1], 0))
 # efficiency
 marker = fem.Function(D)
 scatt_facets = facet_tags.find(scatt_tag)
-incident_cells = mesh.compute_incident_entities(msh.topology, scatt_facets, msh.topology.dim - 1,
-                                                msh.topology.dim)
+incident_cells = mesh.compute_incident_entities(msh.topology, scatt_facets, tdim - 1, tdim)
 
-midpoints = mesh.compute_midpoints(msh, msh.topology.dim, incident_cells)
-inner_cells = incident_cells[(midpoints[:, 0]**2 + midpoints[:, 1]**2) < (radius_scatt)**2]
+msh.topology.create_connectivity(tdim, tdim)
+midpoints = mesh.compute_midpoints(msh, tdim, incident_cells)
+inner_cells = incident_cells[(midpoints[:, 0] ** 2 + midpoints[:, 1] ** 2) < (radius_scatt) ** 2]
 
 marker.x.array[inner_cells] = 1
 
@@ -535,7 +821,9 @@ q_abs_fenics_proc = (fem.assemble_scalar(fem.form(Q * dAu)) / (gcs * I0)).real
 q_abs_fenics = msh.comm.allreduce(q_abs_fenics_proc, op=MPI.SUM)
 
 # Normalized scattering efficiency
-q_sca_fenics_proc = (fem.assemble_scalar(fem.form((P('+') + P('-')) * dS(scatt_tag))) / (gcs * I0)).real
+q_sca_fenics_proc = (
+    fem.assemble_scalar(fem.form((P("+") + P("-")) * dS(scatt_tag))) / (gcs * I0)
+).real
 
 # Sum results from all MPI processes
 q_sca_fenics = msh.comm.allreduce(q_sca_fenics_proc, op=MPI.SUM)

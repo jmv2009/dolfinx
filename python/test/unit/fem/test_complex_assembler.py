@@ -5,6 +5,8 @@
 # SPDX-License-Identifier:    LGPL-3.0-or-later
 """Unit tests for assembly in complex mode"""
 
+import sys
+
 from mpi4py import MPI
 
 import numpy as np
@@ -17,6 +19,9 @@ from dolfinx.fem import Function, assemble_matrix, assemble_vector, form, functi
 from dolfinx.mesh import create_unit_square
 from ufl import dx, grad, inner
 
+if sys.platform.startswith("win32"):
+    pytest.skip("No Win32 _Complex support", allow_module_level=True)
+
 
 @pytest.mark.parametrize("complex_dtype", [np.complex64, np.complex128])
 def test_complex_assembly(complex_dtype):
@@ -24,7 +29,7 @@ def test_complex_assembly(complex_dtype):
 
     real_dtype = np.real(complex_dtype(1.0)).dtype
     mesh = create_unit_square(MPI.COMM_WORLD, 10, 10, dtype=real_dtype)
-    P2 = element("Lagrange", mesh.basix_cell(), 2)
+    P2 = element("Lagrange", mesh.basix_cell(), 2, dtype=real_dtype)
     V = functionspace(mesh, P2)
     u = ufl.TrialFunction(V)
     v = ufl.TestFunction(V)
@@ -35,7 +40,7 @@ def test_complex_assembly(complex_dtype):
 
     b = assemble_vector(L1)
     b.scatter_reverse(la.InsertMode.add)
-    bnorm = b.norm(la.Norm.l1)
+    bnorm = la.norm(b, la.Norm.l1)
     b_norm_ref = abs(-2 + 3.0j)
     assert bnorm == pytest.approx(b_norm_ref, rel=1e-5)
 
@@ -55,7 +60,7 @@ def test_complex_assembly(complex_dtype):
 
     b = assemble_vector(L0)
     b.scatter_reverse(la.InsertMode.add)
-    b1_norm = b.norm()
+    b1_norm = la.norm(b)
 
     a_complex = form((1 + 1j) * inner(u, v) * dx, dtype=complex_dtype)
     f = ufl.sin(2 * np.pi * x[0])
@@ -66,7 +71,7 @@ def test_complex_assembly(complex_dtype):
     assert A1_norm == pytest.approx(A2_norm / 2)
     b = assemble_vector(L2)
     b.scatter_reverse(la.InsertMode.add)
-    b2_norm = b.norm(la.Norm.l2)
+    b2_norm = la.norm(b, la.Norm.l2)
     assert b2_norm == pytest.approx(b1_norm)
 
 
@@ -78,7 +83,7 @@ def test_complex_assembly_solve(complex_dtype, cg_solver):
     degree = 3
     real_dtype = np.real(complex_dtype(1.0)).dtype
     mesh = create_unit_square(MPI.COMM_WORLD, 20, 20, dtype=real_dtype)
-    P = element("Lagrange", mesh.basix_cell(), degree)
+    P = element("Lagrange", mesh.basix_cell(), degree, dtype=real_dtype)
     V = functionspace(mesh, P)
 
     x = ufl.SpatialCoordinate(mesh)
@@ -106,6 +111,7 @@ def test_complex_assembly_solve(complex_dtype, cg_solver):
     # Reference Solution
     def ref_eval(x):
         return np.cos(2 * np.pi * x[0]) * np.cos(2 * np.pi * x[1])
+
     u_ref = Function(V, dtype=real_dtype)
     u_ref.interpolate(ref_eval)
 

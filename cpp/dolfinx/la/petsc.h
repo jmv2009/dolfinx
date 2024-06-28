@@ -7,6 +7,8 @@
 
 #pragma once
 
+#ifdef HAS_PETSC
+
 #include "Vector.h"
 #include "utils.h"
 #include <boost/lexical_cast.hpp>
@@ -85,17 +87,18 @@ Vec create_vector_wrap(const la::Vector<V>& x)
   return create_vector_wrap(*x.index_map(), x.bs(), x.array());
 }
 
-/// @todo This function could take just the local sizes
+/// @brief Compute PETSc IndexSets (IS) for a stack of index maps.
 ///
-/// Compute PETSc IndexSets (IS) for a stack of index maps. E.g., if
-/// `map[0] = {0, 1, 2, 3, 4, 5, 6}` and `map[1] = {0, 1, 2, 4}` (in
-/// local indices) then `IS[0] = {0, 1, 2, 3, 4, 5, 6}` and `IS[1] = {7,
-/// 8, 9, 10}`.
+/// If `map[0] = {0, 1, 2, 3, 4, 5, 6}` and `map[1] = {0, 1, 2, 4}` (in
+/// local indices) then `IS[0] = {0, 1, 2, 3, 4, 5, 6}` and
+/// `IS[1] = {7, 8, 9, 10}`.
+///
+/// @todo This function could take just the local sizes.
 ///
 /// @note The caller is responsible for destruction of each IS.
 ///
 /// @param[in] maps Vector of IndexMaps and corresponding block sizes
-/// @returns Vector of PETSc Index Sets, created on` PETSC_COMM_SELF`
+/// @return Vector of PETSc Index Sets, created on` PETSC_COMM_SELF`
 std::vector<IS> create_index_sets(
     const std::vector<
         std::pair<std::reference_wrapper<const common::IndexMap>, int>>& maps);
@@ -323,9 +326,9 @@ public:
   static auto set_block_fn(Mat A, InsertMode mode)
   {
     return [A, mode, cache = std::vector<PetscInt>()](
-               const std::span<const std::int32_t>& rows,
-               const std::span<const std::int32_t>& cols,
-               const std::span<const PetscScalar>& vals) mutable -> int
+               std::span<const std::int32_t> rows,
+               std::span<const std::int32_t> cols,
+               std::span<const PetscScalar> vals) mutable -> int
     {
       PetscErrorCode ierr;
 #ifdef PETSC_USE_64BIT_INDICES
@@ -362,9 +365,9 @@ public:
   {
     return [A, bs0, bs1, mode, cache0 = std::vector<PetscInt>(),
             cache1 = std::vector<PetscInt>()](
-               const std::span<const std::int32_t>& rows,
-               const std::span<const std::int32_t>& cols,
-               const std::span<const PetscScalar>& vals) mutable -> int
+               std::span<const std::int32_t> rows,
+               std::span<const std::int32_t> cols,
+               std::span<const PetscScalar> vals) mutable -> int
     {
       PetscErrorCode ierr;
       cache0.resize(bs0 * rows.size());
@@ -504,3 +507,5 @@ private:
 };
 } // namespace petsc
 } // namespace dolfinx::la
+
+#endif

@@ -12,6 +12,7 @@ import numpy as np
 import pytest
 
 import basix
+from dolfinx import default_real_type
 from dolfinx.fem import Function, functionspace
 from dolfinx.io import XDMFFile
 from dolfinx.mesh import CellType, create_unit_cube, create_unit_interval, create_unit_square
@@ -43,7 +44,7 @@ def mesh_factory(tdim, n):
 @pytest.mark.parametrize("dtype", [np.double, np.complex128])
 def test_save_1d_scalar(tempdir, encoding, dtype, use_pathlib):
     xtype = np.real(dtype(0)).dtype
-    filename2 = (Path(tempdir).joinpath("u1_.xdmf")if use_pathlib else Path(tempdir, "u1_.xdmf"))
+    filename2 = Path(tempdir).joinpath("u1_.xdmf") if use_pathlib else Path(tempdir, "u1_.xdmf")
     mesh = create_unit_interval(MPI.COMM_WORLD, 32, dtype=xtype)
     V = functionspace(mesh, ("Lagrange", 2))
     u = Function(V, dtype=dtype)
@@ -223,7 +224,7 @@ def test_save_3d_vector_series(tempdir, encoding, dtype, cell_type):
 
 def test_higher_order_function(tempdir):
     """Test Function output for higher-order meshes."""
-    gmsh = pytest.importorskip('gmsh')
+    gmsh = pytest.importorskip("gmsh")
     from dolfinx.io import gmshio
 
     gmsh.initialize()
@@ -338,7 +339,13 @@ def test_higher_order_function(tempdir):
             file.write_function(u)
 
     # Write P3 GLL Function (exception expected)
-    ufl_e = basix.ufl.element(basix.ElementFamily.P, basix.CellType.tetrahedron, 3, basix.LagrangeVariant.gll_warped)
+    ufl_e = basix.ufl.element(
+        basix.ElementFamily.P,
+        basix.CellType.tetrahedron,
+        3,
+        basix.LagrangeVariant.gll_warped,
+        dtype=default_real_type,
+    )
     u = Function(functionspace(msh, ufl_e))
     with pytest.raises(RuntimeError):
         filename = Path(tempdir, "u3D_P3.xdmf")
@@ -347,7 +354,13 @@ def test_higher_order_function(tempdir):
             file.write_function(u)
 
     # Write P3 equispaced Function
-    ufl_e = basix.ufl.element(basix.ElementFamily.P, basix.CellType.tetrahedron, 3, basix.LagrangeVariant.equispaced)
+    ufl_e = basix.ufl.element(
+        basix.ElementFamily.P,
+        basix.CellType.tetrahedron,
+        3,
+        basix.LagrangeVariant.equispaced,
+        dtype=default_real_type,
+    )
     u1 = Function(functionspace(msh, ufl_e))
     u1.interpolate(u)
     filename = Path(tempdir, "u3D_P3.xdmf")

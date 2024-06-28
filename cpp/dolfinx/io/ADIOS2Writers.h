@@ -249,8 +249,17 @@ std::vector<T> pack_function_data(const fem::Function<T, U>& u)
   std::uint32_t num_vertices
       = vertex_map->size_local() + vertex_map->num_ghosts();
 
-  int rank = V->element()->value_shape().size();
-  std::uint32_t num_components = std::pow(3, rank);
+  std::span<const std::size_t> value_shape = u.function_space()->value_shape();
+  int rank = value_shape.size();
+  int num_components = std::reduce(value_shape.begin(), value_shape.end(), 1,
+                                   std::multiplies{});
+  if (num_components < std::pow(3, rank))
+    num_components = std::pow(3, rank);
+  else if (num_components > std::pow(3, rank))
+  {
+    throw std::runtime_error(
+        "Fides does not support tensors larger than pow(3, rank)");
+  }
 
   // Get dof array and pack into array (padded where appropriate)
   auto dofmap_x = geometry.dofmap();
@@ -260,9 +269,8 @@ std::vector<T> pack_function_data(const fem::Function<T, U>& u)
   for (std::int32_t c = 0; c < num_cells; ++c)
   {
     auto dofs = dofmap->cell_dofs(c);
-    auto dofs_x
-        = MDSPAN_IMPL_STANDARD_NAMESPACE::MDSPAN_IMPL_PROPOSED_NAMESPACE::
-            submdspan(dofmap_x, c, MDSPAN_IMPL_STANDARD_NAMESPACE::full_extent);
+    auto dofs_x = MDSPAN_IMPL_STANDARD_NAMESPACE::submdspan(
+        dofmap_x, c, MDSPAN_IMPL_STANDARD_NAMESPACE::full_extent);
     assert(dofs.size() == dofs_x.size());
     for (std::size_t i = 0; i < dofs.size(); ++i)
       for (int j = 0; j < bs; ++j)
@@ -290,11 +298,24 @@ void write_data(adios2::IO& io, adios2::Engine& engine,
   assert(dofmap);
   auto mesh = V->mesh();
   assert(mesh);
-  const int gdim = mesh->geometry().dim();
 
-  // Vectors and tensor need padding in gdim < 3
-  int rank = V->element()->value_shape().size();
-  bool need_padding = rank > 0 and gdim != 3 ? true : false;
+  // Pad to 3D if vector/tensor is product of dimensions is smaller than
+  // 3**rank to ensure that we can visualize them correctly in Paraview
+  std::span<const std::size_t> value_shape = u.function_space()->value_shape();
+  int rank = value_shape.size();
+  int num_components = std::reduce(value_shape.begin(), value_shape.end(), 1,
+                                   std::multiplies{});
+  bool need_padding = false;
+  if (num_components < std::pow(3, rank))
+  {
+    num_components = std::pow(3, rank);
+    need_padding = true;
+  }
+  else if (num_components > std::pow(3, rank))
+  {
+    throw std::runtime_error(
+        "Fides does not support tensors larger than pow(3, rank)");
+  }
 
   // Get vertex data. If the mesh and function dofmaps are the same we
   // can work directly with the dof array.
@@ -321,7 +342,6 @@ void write_data(adios2::IO& io, adios2::Engine& engine,
       = vertex_map->size_local() + vertex_map->num_ghosts();
 
   // Write each real and imaginary part of the function
-  std::uint32_t num_components = std::pow(3, rank);
   assert(data.size() % num_components == 0);
   if constexpr (std::is_scalar_v<T>)
   {
@@ -591,8 +611,8 @@ public:
 
     for (auto& v : _u)
     {
-      std::visit(
-          [this](auto&& u) { impl_fides::write_data(*_io, *_engine, *u); }, v);
+      std::visit([this](auto&& u)
+                 { impl_fides::write_data(*_io, *_engine, *u); }, v);
     }
 
     _engine->EndStep();
@@ -658,8 +678,16 @@ void vtx_write_data(adios2::IO& io, adios2::Engine& engine,
   // Get function data array and information about layout
   assert(u.x());
   std::span<const T> u_vector = u.x()->array();
-  int rank = u.function_space()->element()->value_shape().size();
-  std::uint32_t num_comp = std::pow(3, rank);
+
+  // Pad to 3D if vector/tensor is product of dimensions is smaller than
+  // 3**rank to ensure that we can visualize them correctly in Paraview
+  std::span<const std::size_t> value_shape = u.function_space()->value_shape();
+  int rank = value_shape.size();
+  int num_comp = std::reduce(value_shape.begin(), value_shape.end(), 1,
+                             std::multiplies{});
+  if (num_comp < std::pow(3, rank))
+    num_comp = std::pow(3, rank);
+
   std::shared_ptr<const fem::DofMap> dofmap = u.function_space()->dofmap();
   assert(dofmap);
   std::shared_ptr<const common::IndexMap> index_map = dofmap->index_map;
@@ -876,7 +904,7 @@ public:
             std::shared_ptr<const mesh::Mesh<T>> mesh,
             std::string engine = "BPFile")
       : ADIOS2Writer(comm, filename, "VTX mesh writer", engine), _mesh(mesh),
-        _mesh_reuse_policy(VTXMeshPolicy::update)
+        _mesh_reuse_policy(VTXMeshPolicy::update), _is_piecewise_constant(false)
   {
     // Define VTK scheme attribute for mesh
     std::string vtk_scheme = impl_vtx::create_vtk_schema({}, {}).str();
@@ -903,7 +931,7 @@ public:
             VTXMeshPolicy mesh_policy = VTXMeshPolicy::update)
       : ADIOS2Writer(comm, filename, "VTX function writer", engine),
         _mesh(impl_adios2::extract_common_mesh<T>(u)),
-        _mesh_reuse_policy(mesh_policy), _u(u)
+        _mesh_reuse_policy(mesh_policy), _u(u), _is_piecewise_constant(false)
   {
     if (u.empty())
       throw std::runtime_error("VTXWriter fem::Function list is empty.");
@@ -934,11 +962,7 @@ public:
 
     // Check if function is DG 0
     if (element0->space_dimension() / element0->block_size() == 1)
-    {
-      throw std::runtime_error(
-          "VTK does not support cell-wise fields. See "
-          "https://gitlab.kitware.com/vtk/vtk/-/issues/18458.");
-    }
+      _is_piecewise_constant = true;
 
     // Check that all functions come from same element type
     for (auto& v : _u)
@@ -971,7 +995,12 @@ public:
 
     // Define VTK scheme attribute for set of functions
     std::vector<std::string> names = impl_vtx::extract_function_names<T>(u);
-    std::string vtk_scheme = impl_vtx::create_vtk_schema(names, {}).str();
+    std::string vtk_scheme;
+    if (_is_piecewise_constant)
+      vtk_scheme = impl_vtx::create_vtk_schema({}, names).str();
+    else
+      vtk_scheme = impl_vtx::create_vtk_schema(names, {}).str();
+
     impl_adios2::define_attribute<std::string>(*_io, "vtk.xml", vtk_scheme);
   }
 
@@ -1023,9 +1052,19 @@ public:
     _engine->BeginStep();
     _engine->template Put<double>(var_step, t);
 
-    // If we have no functions write the mesh to file
-    if (_u.empty())
+    // If we have no functions or DG functions write the mesh to file
+    if (_is_piecewise_constant or _u.empty())
+    {
       impl_vtx::vtx_write_mesh(*_io, *_engine, *_mesh);
+      if (_is_piecewise_constant)
+      {
+        for (auto& v : _u)
+        {
+          std::visit([&](auto& u)
+                     { impl_vtx::vtx_write_data(*_io, *_engine, *u); }, v);
+        }
+      }
+    }
     else
     {
       if (_mesh_reuse_policy == VTXMeshPolicy::update
@@ -1056,8 +1095,8 @@ public:
       // Write function data for each function to file
       for (auto& v : _u)
       {
-        std::visit(
-            [&](auto& u) { impl_vtx::vtx_write_data(*_io, *_engine, *u); }, v);
+        std::visit([&](auto& u)
+                   { impl_vtx::vtx_write_data(*_io, *_engine, *u); }, v);
       }
     }
 
@@ -1073,6 +1112,9 @@ private:
   VTXMeshPolicy _mesh_reuse_policy;
   std::vector<std::int64_t> _x_id;
   std::vector<std::uint8_t> _x_ghost;
+
+  // Special handling of piecewise constant functions
+  bool _is_piecewise_constant;
 };
 
 /// Type deduction

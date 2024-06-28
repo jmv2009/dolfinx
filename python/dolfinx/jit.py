@@ -8,6 +8,7 @@
 import functools
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -20,21 +21,27 @@ import ufl
 __all__ = ["ffcx_jit", "get_options", "mpi_jit_decorator"]
 
 DOLFINX_DEFAULT_JIT_OPTIONS = {
-    "cache_dir":
-        (os.getenv("XDG_CACHE_HOME", default=Path.home().joinpath(".cache")) / Path("fenics"),
-         "Path for storing DOLFINx JIT cache. "
-         "Default prefix ~/.cache/ can be changed using XDG_CACHE_HOME environment variable."),
-    "cffi_debug":
-        (False, "CFFI debug mode"),
-    "cffi_extra_compile_args":
-        (["-O2", "-g0"], "Extra C compiler arguments to pass to CFFI"),
-    "cffi_verbose":
-        (False, "CFFI verbose mode"),
-    "cffi_libraries":
-        (None, "Extra libraries to link"),
-    "timeout":
-        (10, "Timeout for JIT compilation")
+    "cache_dir": (
+        os.getenv("XDG_CACHE_HOME", default=Path.home().joinpath(".cache")) / Path("fenics"),
+        "Path for storing DOLFINx JIT cache. "
+        "Default prefix ~/.cache/ can be changed using XDG_CACHE_HOME environment variable.",
+    ),
+    "cffi_debug": (False, "CFFI debug mode"),
+    "cffi_verbose": (False, "CFFI verbose mode"),
+    "cffi_libraries": (None, "Extra libraries to link"),
+    "timeout": (10, "Timeout for JIT compilation"),
 }
+
+if sys.platform.startswith("win32"):
+    DOLFINX_DEFAULT_JIT_OPTIONS["cffi_extra_compile_args"] = (
+        ["-O2"],
+        "Extra C compiler arguments to pass to CFFI",
+    )
+else:
+    DOLFINX_DEFAULT_JIT_OPTIONS["cffi_extra_compile_args"] = (
+        ["-O2", "-g0"],
+        "Extra C compiler arguments to pass to CFFI",
+    )
 
 
 def mpi_jit_decorator(local_jit, *args, **kwargs):
@@ -50,7 +57,6 @@ def mpi_jit_decorator(local_jit, *args, **kwargs):
 
     @functools.wraps(local_jit)
     def mpi_jit(comm, *args, **kwargs):
-
         # Just call JIT compiler when running in serial
         if comm.size == 1:
             return local_jit(*args, **kwargs)
@@ -99,8 +105,9 @@ def mpi_jit_decorator(local_jit, *args, **kwargs):
 @functools.cache
 def _load_options():
     """Loads options from JSON files."""
-    user_config_file = os.getenv("XDG_CONFIG_HOME", default=Path.home().joinpath(".config")) \
-        / Path("dolfinx", "dolfinx_jit_options.json")
+    user_config_file = os.getenv("XDG_CONFIG_HOME", default=Path.home().joinpath(".config")) / Path(
+        "dolfinx", "dolfinx_jit_options.json"
+    )
     try:
         with open(user_config_file) as f:
             user_options = json.load(f)
@@ -149,8 +156,9 @@ def get_options(priority_options: Optional[dict] = None) -> dict:
 
 
 @mpi_jit_decorator
-def ffcx_jit(ufl_object, form_compiler_options: Optional[dict] = None,
-             jit_options: Optional[dict] = None):
+def ffcx_jit(
+    ufl_object, form_compiler_options: Optional[dict] = None, jit_options: Optional[dict] = None
+):
     """Compile UFL object with FFCx and CFFI.
 
     Args:
@@ -202,8 +210,6 @@ def ffcx_jit(ufl_object, form_compiler_options: Optional[dict] = None,
     # Switch on type and compile, returning cffi object
     if isinstance(ufl_object, ufl.Form):
         r = ffcx.codegeneration.jit.compile_forms([ufl_object], options=p_ffcx, **p_jit)
-    elif isinstance(ufl_object, ufl.AbstractFiniteElement):
-        r = ffcx.codegeneration.jit.compile_elements([ufl_object], options=p_ffcx, **p_jit)
     elif isinstance(ufl_object, ufl.Mesh):
         r = ffcx.codegeneration.jit.compile_coordinate_maps([ufl_object], options=p_ffcx, **p_jit)
     elif isinstance(ufl_object, tuple) and isinstance(ufl_object[0], ufl.core.expr.Expr):

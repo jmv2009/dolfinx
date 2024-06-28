@@ -58,14 +58,15 @@ mesh::extract_topology(CellType cell_type, const fem::ElementDofLayout& layout,
 std::vector<std::int32_t> mesh::exterior_facet_indices(const Topology& topology)
 {
   const int tdim = topology.dim();
-  auto facet_map = topology.index_map(tdim - 1);
-  if (!facet_map)
-    throw std::runtime_error("Facets have not been computed.");
-
-  // Find all owned facets (not ghost) with only one attached cell
-  const int num_facets = facet_map->size_local();
   auto f_to_c = topology.connectivity(tdim - 1, tdim);
-  assert(f_to_c);
+  if (!f_to_c)
+  {
+    throw std::runtime_error(
+        "Facet to cell connectivity has not been computed.");
+  }
+  // Find all owned facets (not ghost) with only one attached cell
+  auto facet_map = topology.index_map(tdim - 1);
+  const int num_facets = facet_map->size_local();
   std::vector<std::int32_t> facets;
   for (std::int32_t f = 0; f < num_facets; ++f)
   {
@@ -87,14 +88,16 @@ mesh::CellPartitionFunction
 mesh::create_cell_partitioner(mesh::GhostMode ghost_mode,
                               const graph::partition_fn& partfn)
 {
-  return [partfn, ghost_mode](MPI_Comm comm, int nparts, int tdim,
-                              const graph::AdjacencyList<std::int64_t>& cells)
+  return [partfn, ghost_mode](
+             MPI_Comm comm, int nparts, const std::vector<CellType>& cell_types,
+             const std::vector<std::span<const std::int64_t>>& cells)
              -> graph::AdjacencyList<std::int32_t>
   {
-    LOG(INFO) << "Compute partition of cells across ranks";
+    spdlog::info("Compute partition of cells across ranks");
 
     // Compute distributed dual graph (for the cells on this process)
-    const graph::AdjacencyList dual_graph = build_dual_graph(comm, cells, tdim);
+    const graph::AdjacencyList dual_graph
+        = build_dual_graph(comm, cell_types, cells);
 
     // Just flag any kind of ghosting for now
     bool ghosting = (ghost_mode != GhostMode::none);

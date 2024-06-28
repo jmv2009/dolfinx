@@ -20,41 +20,131 @@ from functools import partial
 from mpi4py import MPI
 
 import numpy as np
-from mesh_sphere_axis import generate_mesh_sphere_axis
 from scipy.special import jv, jvp
+
+try:
+    from petsc4py import PETSc
+
+    import dolfinx
+
+    if PETSc.IntType == np.int64 and MPI.COMM_WORLD.size > 1:
+        print("This solver fails with PETSc and 64-bit integers becaude of memory errors in MUMPS.")
+        # Note: when PETSc.IntType == np.int32, superlu_dist is used
+        # rather than MUMPS and does not trigger memory failures.
+        exit(0)
+
+    # The time-harmonic Maxwell equation is complex-valued PDE. PETSc
+    # must therefore have compiled with complex scalars.
+    if not np.issubdtype(PETSc.ScalarType, np.complexfloating):
+        print("Demo can only be executed when PETSc using complex scalars.")
+        exit(0)
+
+    scalar_type = PETSc.ScalarType
+    real_type = PETSc.RealType
+
+    if not dolfinx.has_petsc:
+        print("This demo requires DOLFINx to be compiled with PETSc enabled.")
+        exit(0)
+except ModuleNotFoundError:
+    print("This demo requires petsc4py.")
+    exit(0)
 
 import ufl
 from basix.ufl import element, mixed_element
-from dolfinx import default_scalar_type, fem, io, mesh, plot
+from dolfinx import fem, io, mesh, plot
 from dolfinx.fem.petsc import LinearProblem
 
 try:
     from dolfinx.io import VTXWriter
+
     has_vtx = True
 except ImportError:
-    print("VTXWriter not available, solution won't be saved")
+    print("VTXWriter not available, solution will not be saved.")
     has_vtx = False
 
 try:
     import gmsh
 except ModuleNotFoundError:
-    print("This demo requires gmsh to be installed")
+    print("This demo requires gmsh to be installed.")
     sys.exit(0)
 
 try:
     import pyvista
+
     have_pyvista = True
 except ModuleNotFoundError:
     print("pyvista and pyvistaqt are required to visualise the solution")
     have_pyvista = False
 # -
 
-# The time-harmonic Maxwell equation is complex-valued PDE. PETSc must
-# therefore have compiled with complex scalars.
 
-if not np.issubdtype(default_scalar_type, np.complexfloating):
-    print("Demo should only be executed with DOLFINx complex mode")
-    exit(0)
+def generate_mesh_sphere_axis(
+    radius_sph: float,
+    radius_scatt: float,
+    radius_dom: float,
+    radius_pml: float,
+    in_sph_size: float,
+    on_sph_size: float,
+    scatt_size: float,
+    pml_size: float,
+    au_tag: int,
+    bkg_tag: int,
+    pml_tag: int,
+    scatt_tag: int,
+):
+    gmsh.model.add("geometry")
+
+    gmsh.model.occ.addCircle(0, 0, 0, radius_sph * 0.5, angle1=-np.pi / 2, angle2=np.pi / 2, tag=1)
+    gmsh.model.occ.addCircle(0, 0, 0, radius_sph, angle1=-np.pi / 2, angle2=np.pi / 2, tag=2)
+    gmsh.model.occ.addCircle(0, 0, 0, radius_scatt, angle1=-np.pi / 2, angle2=np.pi / 2, tag=3)
+    gmsh.model.occ.addCircle(0, 0, 0, radius_dom, angle1=-np.pi / 2, angle2=np.pi / 2, tag=4)
+    gmsh.model.occ.addCircle(
+        0, 0, 0, radius_dom + radius_pml, angle1=-np.pi / 2, angle2=np.pi / 2, tag=5
+    )
+
+    gmsh.model.occ.addLine(10, 8, tag=6)
+    gmsh.model.occ.addLine(8, 6, tag=7)
+    gmsh.model.occ.addLine(6, 4, tag=8)
+    gmsh.model.occ.addLine(4, 2, tag=9)
+    gmsh.model.occ.addLine(2, 1, tag=10)
+    gmsh.model.occ.addLine(1, 3, tag=11)
+    gmsh.model.occ.addLine(3, 5, tag=12)
+    gmsh.model.occ.addLine(5, 7, tag=13)
+    gmsh.model.occ.addLine(7, 9, tag=14)
+
+    gmsh.model.occ.addCurveLoop([10, 1], tag=1)
+    gmsh.model.occ.addPlaneSurface([1], tag=1)
+    gmsh.model.occ.addCurveLoop([11, 2, 9, -1], tag=2)
+    gmsh.model.occ.addPlaneSurface([2], tag=2)
+    gmsh.model.occ.addCurveLoop([8, -2, 12, 3], tag=3)
+    gmsh.model.occ.addPlaneSurface([3], tag=3)
+    gmsh.model.occ.addCurveLoop([13, 4, 7, -3], tag=4)
+    gmsh.model.occ.addPlaneSurface([4], tag=4)
+    gmsh.model.occ.addCurveLoop([4, -6, -5, -14], tag=5)
+    gmsh.model.occ.addPlaneSurface([5], tag=5)
+
+    gmsh.model.occ.synchronize()
+
+    gmsh.model.addPhysicalGroup(2, [1, 2], tag=au_tag)
+    gmsh.model.addPhysicalGroup(2, [3, 4], tag=bkg_tag)
+    gmsh.model.addPhysicalGroup(2, [5], tag=pml_tag)
+    gmsh.model.addPhysicalGroup(1, [3], tag=scatt_tag)
+
+    gmsh.model.mesh.setSize([(0, 1)], size=in_sph_size)
+    gmsh.model.mesh.setSize([(0, 2)], size=in_sph_size)
+    gmsh.model.mesh.setSize([(0, 3)], size=on_sph_size)
+    gmsh.model.mesh.setSize([(0, 4)], size=on_sph_size)
+    gmsh.model.mesh.setSize([(0, 5)], size=scatt_size)
+    gmsh.model.mesh.setSize([(0, 6)], size=scatt_size)
+    gmsh.model.mesh.setSize([(0, 7)], size=pml_size)
+    gmsh.model.mesh.setSize([(0, 8)], size=pml_size)
+    gmsh.model.mesh.setSize([(0, 9)], size=pml_size)
+    gmsh.model.mesh.setSize([(0, 10)], size=pml_size)
+
+    gmsh.model.mesh.generate(2)
+
+    return gmsh.model
+
 
 # ## Problem formulation
 #
@@ -209,22 +299,38 @@ def curl_axis(a, m: int, rho):
 # representing the $m$-th order Bessel function of first kind and
 # $J_{m}^{\prime}$ its derivative. We implement these functions:
 
+
 # +
 def background_field_rz(theta: float, n_bkg: float, k0: float, m: int, x):
     k = k0 * n_bkg
-    a_r = (np.cos(theta) * np.exp(1j * k * x[1] * np.cos(theta))
-           * (1j)**(-m + 1) * jvp(m, k * x[0] * np.sin(theta), 1))
-    a_z = (np.sin(theta) * np.exp(1j * k * x[1] * np.cos(theta))
-           * (1j)**-m * jv(m, k * x[0] * np.sin(theta)))
+    a_r = (
+        np.cos(theta)
+        * np.exp(1j * k * x[1] * np.cos(theta))
+        * (1j) ** (-m + 1)
+        * jvp(m, k * x[0] * np.sin(theta), 1)
+    )
+    a_z = (
+        np.sin(theta)
+        * np.exp(1j * k * x[1] * np.cos(theta))
+        * (1j) ** -m
+        * jv(m, k * x[0] * np.sin(theta))
+    )
     return (a_r, a_z)
 
 
 def background_field_p(theta: float, n_bkg: float, k0: float, m: int, x):
     k = k0 * n_bkg
-    a_p = (np.cos(theta) / (k * x[0] * np.sin(theta))
-           * np.exp(1j * k * x[1] * np.cos(theta)) * m
-           * (1j)**(-m) * jv(m, k * x[0] * np.sin(theta)))
+    a_p = (
+        np.cos(theta)
+        / (k * x[0] * np.sin(theta))
+        * np.exp(1j * k * x[1] * np.cos(theta))
+        * m
+        * (1j) ** (-m)
+        * jv(m, k * x[0] * np.sin(theta))
+    )
     return a_p
+
+
 # -
 
 # PML can be implemented in a spherical shell surrounding the background
@@ -284,21 +390,21 @@ def background_field_p(theta: float, n_bkg: float, k0: float, m: int, x):
 
 
 def pml_coordinate(x, r, alpha: float, k0: float, radius_dom: float, radius_pml: float):
-    return (x + 1j * alpha / k0 * x * (r - radius_dom) / (radius_pml * r))
+    return x + 1j * alpha / k0 * x * (r - radius_dom) / (radius_pml * r)
 
 
 def create_eps_mu(pml, rho, eps_bkg, mu_bkg):
     J = ufl.grad(pml)
 
     # Transform the 2x2 Jacobian into a 3x3 matrix.
-    J = ufl.as_matrix(((J[0, 0], J[0, 1], 0),
-                       (J[1, 0], J[1, 1], 0),
-                       (0, 0, pml[0] / rho)))
+    J = ufl.as_matrix(((J[0, 0], J[0, 1], 0), (J[1, 0], J[1, 1], 0), (0, 0, pml[0] / rho)))
 
     A = ufl.inv(J)
     eps_pml = ufl.det(J) * A * eps_bkg * ufl.transpose(A)
     mu_pml = ufl.det(J) * A * mu_bkg * ufl.transpose(A)
     return eps_pml, mu_pml
+
+
 # -
 
 # We can now define some constants and geometrical parameters, and then
@@ -342,9 +448,19 @@ gmsh.initialize(sys.argv)
 if MPI.COMM_WORLD.rank == 0:
     # Mesh generation
     model = generate_mesh_sphere_axis(
-        radius_sph, radius_scatt, radius_dom, radius_pml,
-        in_sph_size, on_sph_size, scatt_size, pml_size,
-        au_tag, bkg_tag, pml_tag, scatt_tag)
+        radius_sph,
+        radius_scatt,
+        radius_dom,
+        radius_pml,
+        in_sph_size,
+        on_sph_size,
+        scatt_size,
+        pml_size,
+        au_tag,
+        bkg_tag,
+        pml_tag,
+        scatt_tag,
+    )
 
 model = MPI.COMM_WORLD.bcast(model, root=0)
 msh, cell_tags, facet_tags = io.gmshio.model_to_mesh(model, MPI.COMM_WORLD, 0, gdim=2)
@@ -355,11 +471,12 @@ MPI.COMM_WORLD.barrier()
 
 # Visually check of the mesh and of the subdomains using PyVista:
 
+tdim = msh.topology.dim
 if have_pyvista:
     topology, cell_types, geometry = plot.vtk_mesh(msh, 2)
     grid = pyvista.UnstructuredGrid(topology, cell_types, geometry)
     plotter = pyvista.Plotter()
-    num_local_cells = msh.topology.index_map(msh.topology.dim).size_local
+    num_local_cells = msh.topology.index_map(tdim).size_local
     grid.cell_data["Marker"] = cell_tags.values[cell_tags.indices < num_local_cells]
     grid.set_active_scalars("Marker")
     plotter.add_mesh(grid, show_edges=True)
@@ -375,15 +492,15 @@ if have_pyvista:
 # will use Lagrange elements:
 
 degree = 3
-curl_el = element("N1curl", msh.basix_cell(), degree)
-lagr_el = element("Lagrange", msh.basix_cell(), degree)
+curl_el = element("N1curl", msh.basix_cell(), degree, dtype=real_type)
+lagr_el = element("Lagrange", msh.basix_cell(), degree, dtype=real_type)
 V = fem.functionspace(msh, mixed_element([curl_el, lagr_el]))
 
 # The integration domains of our problem are the following:
 
 # +
 # Measures for subdomains
-dx = ufl.Measure("dx", msh, subdomain_data=cell_tags, metadata={'quadrature_degree': 5})
+dx = ufl.Measure("dx", msh, subdomain_data=cell_tags, metadata={"quadrature_degree": 5})
 dDom = dx((au_tag, bkg_tag))
 dPml = dx(pml_tag)
 # -
@@ -446,8 +563,12 @@ rho, z = ufl.SpatialCoordinate(msh)
 alpha = 5
 r = ufl.sqrt(rho**2 + z**2)
 
-pml_coords = ufl.as_vector((pml_coordinate(rho, r, alpha, k0, radius_dom, radius_pml),
-                            pml_coordinate(z, r, alpha, k0, radius_dom, radius_pml)))
+pml_coords = ufl.as_vector(
+    (
+        pml_coordinate(rho, r, alpha, k0, radius_dom, radius_pml),
+        pml_coordinate(z, r, alpha, k0, radius_dom, radius_pml),
+    )
+)
 
 eps_pml, mu_pml = create_eps_mu(pml_coords, rho, eps_bkg, 1)
 # -
@@ -468,11 +589,10 @@ gcs = np.pi * radius_sph**2
 # Marker functions for the scattering efficiency integral
 marker = fem.Function(D)
 scatt_facets = facet_tags.find(scatt_tag)
-incident_cells = mesh.compute_incident_entities(msh.topology, scatt_facets,
-                                                msh.topology.dim - 1,
-                                                msh.topology.dim)
-midpoints = mesh.compute_midpoints(msh, msh.topology.dim, incident_cells)
-inner_cells = incident_cells[(midpoints[:, 0]**2 + midpoints[:, 1]**2) < (radius_scatt)**2]
+incident_cells = mesh.compute_incident_entities(msh.topology, scatt_facets, tdim - 1, tdim)
+msh.topology.create_connectivity(tdim, tdim)
+midpoints = mesh.compute_midpoints(msh, tdim, incident_cells)
+inner_cells = incident_cells[(midpoints[:, 0] ** 2 + midpoints[:, 1] ** 2) < (radius_scatt) ** 2]
 marker.x.array[inner_cells] = 1
 
 # Define integration domain for the gold sphere
@@ -503,7 +623,7 @@ dS = ufl.Measure("dS", msh, subdomain_data=facet_tags)
 phi = np.pi / 4
 
 # Initialize phase term
-phase = fem.Constant(msh, default_scalar_type(np.exp(1j * 0 * phi)))
+phase = fem.Constant(msh, scalar_type(np.exp(1j * 0 * phi)))
 # -
 
 # We now solve the problem:
@@ -523,11 +643,13 @@ for m in m_list:
     curl_Es_m = curl_axis(Es_m, m, rho)
     curl_v_m = curl_axis(v_m, m, rho)
 
-    F = - ufl.inner(curl_Es_m, curl_v_m) * rho * dDom \
-        + eps * k0 ** 2 * ufl.inner(Es_m, v_m) * rho * dDom \
-        + k0 ** 2 * (eps - eps_bkg) * ufl.inner(Eb_m, v_m) * rho * dDom \
-        - ufl.inner(ufl.inv(mu_pml) * curl_Es_m, curl_v_m) * rho * dPml \
-        + k0 ** 2 * ufl.inner(eps_pml * Es_m, v_m) * rho * dPml
+    F = (
+        -ufl.inner(curl_Es_m, curl_v_m) * rho * dDom
+        + eps * k0**2 * ufl.inner(Es_m, v_m) * rho * dDom
+        + k0**2 * (eps - eps_bkg) * ufl.inner(Eb_m, v_m) * rho * dDom
+        - ufl.inner(ufl.inv(mu_pml) * curl_Es_m, curl_v_m) * rho * dPml
+        + k0**2 * ufl.inner(eps_pml * Es_m, v_m) * rho * dPml
+    )
     a, L = ufl.lhs(F), ufl.rhs(F)
 
     problem = LinearProblem(a, L, bcs=[], petsc_options={"ksp_type": "preonly", "pc_type": "lu"})
@@ -539,13 +661,13 @@ for m in m_list:
     # Total electric field
     Eh_m.x.array[:] = Eb_m.x.array[:] + Esh_m.x.array[:]
 
-# We can add our solution to the total scattered field, which also
-# includes the transformation to the $\phi$ plane:
+    # We can add our solution to the total scattered field, which also
+    # includes the transformation to the $\phi$ plane:
 
     phase.value = np.exp(-1j * m * phi)
-    rotate_to_phi = ufl.as_vector((phase + ufl.conj(phase),
-                                   phase + ufl.conj(phase),
-                                   phase - ufl.conj(phase)))
+    rotate_to_phi = ufl.as_vector(
+        (phase + ufl.conj(phase), phase + ufl.conj(phase), phase - ufl.conj(phase))
+    )
 
     if m == 0:  # initialize and do not transform
         Esh = Esh_m
@@ -554,30 +676,36 @@ for m in m_list:
     else:  # transform
         Esh += ufl.elem_mult(Esh_m, rotate_to_phi)
 
-# To check that  our calculations are correct, we can use as reference
-# quantities the absorption and scattering efficiencies:
+    # To check that  our calculations are correct, we can use as reference
+    # quantities the absorption and scattering efficiencies:
 
-# +
+    # +
     # Efficiencies calculation
     if m == 0:  # initialize and do not add 2 factor
         P = np.pi * ufl.inner(-ufl.cross(Esh_m, ufl.conj(Hsh_m)), n_3d) * marker
         Q = np.pi * eps_au.imag * k0 * (ufl.inner(Eh_m, Eh_m)) / Z0
         q_abs_fenics_proc = (fem.assemble_scalar(fem.form(Q * rho * dAu)) / gcs / I0).real
-        q_sca_fenics_proc = (fem.assemble_scalar(fem.form((P('+') + P('-')) * rho * dS(scatt_tag))) / gcs / I0).real
+        q_sca_fenics_proc = (
+            fem.assemble_scalar(fem.form((P("+") + P("-")) * rho * dS(scatt_tag))) / gcs / I0
+        ).real
         q_abs_fenics = msh.comm.allreduce(q_abs_fenics_proc, op=MPI.SUM)
         q_sca_fenics = msh.comm.allreduce(q_sca_fenics_proc, op=MPI.SUM)
     elif m == m_list[0]:  # initialize and add 2 factor
         P = 2 * np.pi * ufl.inner(-ufl.cross(Esh_m, ufl.conj(Hsh_m)), n_3d) * marker
         Q = 2 * np.pi * eps_au.imag * k0 * (ufl.inner(Eh_m, Eh_m)) / Z0 / n_bkg
         q_abs_fenics_proc = (fem.assemble_scalar(fem.form(Q * rho * dAu)) / gcs / I0).real
-        q_sca_fenics_proc = (fem.assemble_scalar(fem.form((P('+') + P('-')) * rho * dS(scatt_tag))) / gcs / I0).real
+        q_sca_fenics_proc = (
+            fem.assemble_scalar(fem.form((P("+") + P("-")) * rho * dS(scatt_tag))) / gcs / I0
+        ).real
         q_abs_fenics = msh.comm.allreduce(q_abs_fenics_proc, op=MPI.SUM)
         q_sca_fenics = msh.comm.allreduce(q_sca_fenics_proc, op=MPI.SUM)
     else:  # do not initialize and add 2 factor
         P = 2 * np.pi * ufl.inner(-ufl.cross(Esh_m, ufl.conj(Hsh_m)), n_3d) * marker
         Q = 2 * np.pi * eps_au.imag * k0 * (ufl.inner(Eh_m, Eh_m)) / Z0 / n_bkg
         q_abs_fenics_proc = (fem.assemble_scalar(fem.form(Q * rho * dAu)) / gcs / I0).real
-        q_sca_fenics_proc = (fem.assemble_scalar(fem.form((P('+') + P('-')) * rho * dS(scatt_tag))) / gcs / I0).real
+        q_sca_fenics_proc = (
+            fem.assemble_scalar(fem.form((P("+") + P("-")) * rho * dS(scatt_tag))) / gcs / I0
+        ).real
         q_abs_fenics += msh.comm.allreduce(q_abs_fenics_proc, op=MPI.SUM)
         q_sca_fenics += msh.comm.allreduce(q_sca_fenics_proc, op=MPI.SUM)
 
@@ -586,7 +714,7 @@ q_ext_fenics = q_abs_fenics + q_sca_fenics
 
 # The quantities `P` and `Q` have an additional `2` factor for `m != 0`
 # due to parity.
-
+#
 # We now compare the numerical and analytical efficiencies (he latter
 # were obtained with the following routine provided by the
 # [`scattnlay`](https://github.com/ovidiopr/scattnlay) library):
@@ -597,7 +725,8 @@ q_ext_fenics = q_abs_fenics + q_sca_fenics
 # m = np.sqrt(eps_au)/n_bkg
 # x = 2*np.pi*radius_sph/wl0*n_bkg
 #
-# q_sca_analyt, q_abs_analyt = scattnlay(np.array([x], dtype=np.complex128), np.array([m], dtype=np.complex128))[2:4]
+# q_sca_analyt, q_abs_analyt = scattnlay(np.array([x], dtype=np.complex128),
+#                                        np.array([m], dtype=np.complex128))[2:4]
 # ```
 #
 # The numerical values are reported here below:
@@ -637,7 +766,7 @@ if MPI.COMM_WORLD.rank == 0:
 # assert err_ext < 0.01
 
 if has_vtx:
-    v_dg_el = element("DG", msh.basix_cell(), degree, shape=(3, ))
+    v_dg_el = element("DG", msh.basix_cell(), degree, shape=(3,), dtype=real_type)
     W = fem.functionspace(msh, v_dg_el)
     Es_dg = fem.Function(W)
     Es_expr = fem.Expression(Esh, W.element.interpolation_points())

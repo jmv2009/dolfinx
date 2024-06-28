@@ -47,7 +47,7 @@ void xdmf_function::add_function(MPI_Comm comm, const fem::Function<T, U>& u,
                                  double t, pugi::xml_node& xml_node,
                                  hid_t h5_id)
 {
-  LOG(INFO) << "Adding function to node \"" << xml_node.path('/') << "\"";
+  spdlog::info("Adding function to node \"{}\"", xml_node.path('/'));
 
   assert(u.function_space());
   auto mesh = u.function_space()->mesh();
@@ -75,9 +75,14 @@ void xdmf_function::add_function(MPI_Comm comm, const fem::Function<T, U>& u,
   assert(dofmap);
   const int bs = dofmap->bs();
 
-  std::span<const std::size_t> value_shape = element->value_shape();
+  // Pad to 3D if vector/tensor is product of dimensions is smaller than 3**rank
+  // to ensure that we can visualize them correctly in Paraview
+  std::span<const std::size_t> value_shape = u.function_space()->value_shape();
+  int rank = value_shape.size();
   int num_components = std::reduce(value_shape.begin(), value_shape.end(), 1,
                                    std::multiplies{});
+  if (num_components < std::pow(3, rank))
+    num_components = std::pow(3, rank);
 
   // Get fem::Function data values and shape
   std::vector<T> data_values;
@@ -135,9 +140,8 @@ void xdmf_function::add_function(MPI_Comm comm, const fem::Function<T, U>& u,
     for (std::int32_t c = 0; c < num_cells; ++c)
     {
       auto dofs = dofmap->cell_dofs(c);
-      auto dofs_x = MDSPAN_IMPL_STANDARD_NAMESPACE::
-          MDSPAN_IMPL_PROPOSED_NAMESPACE::submdspan(
-              dofmap_x, c, MDSPAN_IMPL_STANDARD_NAMESPACE::full_extent);
+      auto dofs_x = MDSPAN_IMPL_STANDARD_NAMESPACE::submdspan(
+          dofmap_x, c, MDSPAN_IMPL_STANDARD_NAMESPACE::full_extent);
       assert(dofs.size() == dofs_x.size());
       for (std::size_t i = 0; i < dofs.size(); ++i)
       {
