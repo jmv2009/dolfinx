@@ -814,7 +814,9 @@ FunctionSpace<T> create_functionspace(
   assert(mesh->topology());
   auto dofmap = std::make_shared<const DofMap>(create_dofmap(
       mesh->comm(), layout, *mesh->topology(), permute_inv, reorder_fn));
-  return FunctionSpace(mesh, _e, dofmap, _value_shape);
+  std::vector<std::shared_ptr<const FiniteElement<T>>> evec = {_e};
+  std::vector<std::shared_ptr<const DofMap>> dmvec = {dofmap};
+  return FunctionSpace(mesh, evec, dmvec, _value_shape);
 }
 
 /// @private

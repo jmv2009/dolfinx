@@ -485,7 +485,8 @@ std::vector<std::size_t> compute_value_shape(
 
 /// Type deduction
 template <typename U, typename V, typename W, typename X>
-FunctionSpace(U mesh, V element, W dofmap, X value_shape)
+FunctionSpace(U mesh, std::vector<V> elements, std::vector<W> dofmap,
+              X value_shape)
     -> FunctionSpace<typename std::remove_cvref<
         typename U::element_type>::type::geometry_type::value_type>;
 
