@@ -38,8 +38,8 @@ public:
 
   /// @brief Create function space for given mesh, element and dofmap.
   /// @param[in] mesh Mesh that the space is defined on.
-  /// @param[in] element Finite element for the space.
-  /// @param[in] dofmap Degree-of-freedom map for the space.
+  /// @param[in] elements Finite elements for the space.
+  /// @param[in] dofmaps Degree-of-freedom maps for the space.
   /// @param[in] value_shape The shape of the value space on the physical cell
   FunctionSpace(
       std::shared_ptr<const mesh::Mesh<geometry_type>> mesh,
