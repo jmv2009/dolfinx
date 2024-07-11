@@ -338,6 +338,7 @@ public:
   }
 
   /// The finite element
+  /// @return The FiniteElement of the FunctionSpace
   std::shared_ptr<const FiniteElement<geometry_type>> element() const
   {
     if (_elements.size() > 1)
@@ -346,13 +347,32 @@ public:
     return _elements[0];
   }
 
+  /// @brief Return the `i`th finite element of the FunctionSpace
+  /// @param i Index of the FiniteElement in the FunctionSpace
+  /// @return A FiniteElement
+  std::shared_ptr<const FiniteElement<geometry_type>> element(int i) const
+  {
+    if (i >= _elements.size() or i < 0)
+      throw std::runtime_error("Invalid element index");
+    return _elements.at(i);
+  }
+
   /// The dofmap
   std::shared_ptr<const DofMap> dofmap() const
   {
     if (_dofmaps.size() > 1)
       throw std::runtime_error("Multiple dofmaps");
-
     return _dofmaps[0];
+  }
+
+  /// @brief Return the `i`th DofMap of the FunctionSpace
+  /// @param i Index
+  /// @return DofMap
+  std::shared_ptr<const DofMap> dofmap(int i) const
+  {
+    if (i >= _dofmaps.size() or i < 0)
+      throw std::runtime_error("Invalid dofmap index");
+    return _dofmaps.at(i);
   }
 
   /// The shape of the value space
